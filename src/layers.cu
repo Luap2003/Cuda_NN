@@ -53,23 +53,23 @@ void forward_layer(Layer *layer, float *d_input, float *d_output, int batch_size
     cublasHandle_t handle;
     cublasCreate(&handle);
 
-    // Dimensions
-    int m = batch_size;                // Number of rows in input/output
-    int n = layer->output_size;        // Number of columns in output
-    int k = layer->input_size;         // Number of columns in input
-
     float alpha = 1.0f;
     float beta = 0.0f;
 
     // Perform matrix multiplication: d_output = alpha * d_input * d_weights^T + beta * d_output
-    cublasSgemm(handle,
-                CUBLAS_OP_N, CUBLAS_OP_T, // No transpose on d_input, transpose d_weights
-                n, m, k,
+    cublasStatus_t stat = cublasSgemm(handle,CUBLAS_OP_T, CUBLAS_OP_N, 
+                layer->output_size,
+                batch_size,
+                layer->input_size,
                 &alpha,
-                layer->d_weights, n,     // d_weights^T has dimensions [n x k]
-                d_input, k,
+                layer->d_weights, layer->input_size,      // d_weights^T has dimensions [n x k]
+                d_input, layer->input_size,               // d_input has dimensions [m x k]
                 &beta,
-                d_output, n);            // d_output has dimensions [n x m]
+                d_output, layer->output_size);            // d_output has dimensions [n x m]
+
+    if (stat != CUBLAS_STATUS_SUCCESS) {
+        printf("cublasSgemm failed\n");
+    }
 
     int threads_per_block = THREADS_PER_BLOCK;
     int total_elements = batch_size * layer->output_size;
@@ -90,6 +90,7 @@ void forward_layer(Layer *layer, float *d_input, float *d_output, int batch_size
     cublasDestroy(handle);
 
 }
+
 
 void free_layer(Layer *layer) {
     // Free device memory

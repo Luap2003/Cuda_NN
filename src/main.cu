@@ -5,6 +5,7 @@
 #include <stdlib.h>
 
 int main() {
+    srand(42);
     // Load data
     //float *x_train, *y_train;
     //int num_samples, input_size, output_size;
