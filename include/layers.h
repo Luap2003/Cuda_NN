@@ -1,7 +1,7 @@
 // layers.h
 #ifndef LAYERS_H
 #define LAYERS_H
-
+#define THREADS_PER_BLOCK 256
 typedef struct {
     char *type;           // e.g. "dense"
     int input_size;

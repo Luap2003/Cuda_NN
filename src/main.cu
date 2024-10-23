@@ -16,8 +16,8 @@ int main() {
     NeuralNetwork *network = create_neural_net(num_layers);
 
     // Create layers
-    Layer *layer1 = create_dense_layer(784, 128, "relu");
-    Layer *layer2 = create_dense_layer(128, 10, "softmax");
+    Layer *layer1 = create_dense_layer(784, 128, "sigmoid");
+    Layer *layer2 = create_dense_layer(128, 10, "sigmoid");
 
     // Add layers to the network
     add_layer_to_neural_net(network, layer1, 0);

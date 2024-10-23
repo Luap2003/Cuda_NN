@@ -1,5 +1,6 @@
 // layers.cu
 #include "../include/layers.h"
+#include "../include/activations.h"
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
 #include <stdlib.h>
@@ -39,6 +40,15 @@ Layer* create_dense_layer(int input_size, int output_size, const char *activatio
     return layer;
 }
 
+__global__ void add_bias(float *d_output, float *d_biases, int batch_size, int output_size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total_elements = batch_size * output_size;
+    if (idx < total_elements) {
+        int bias_idx = idx % output_size;
+        d_output[idx] += d_biases[bias_idx];
+    }
+}
+
 void forward_layer(Layer *layer, float *d_input, float *d_output, int batch_size) {
     cublasHandle_t handle;
     cublasCreate(&handle);
@@ -60,6 +70,22 @@ void forward_layer(Layer *layer, float *d_input, float *d_output, int batch_size
                 d_input, k,
                 &beta,
                 d_output, n);            // d_output has dimensions [n x m]
+
+    int threads_per_block = THREADS_PER_BLOCK;
+    int total_elements = batch_size * layer->output_size;
+    int num_blocks = (total_elements + threads_per_block - 1) / threads_per_block;
+
+    add_bias<<<num_blocks, threads_per_block>>>(d_output, layer->d_biases, batch_size, layer->output_size);
+    cudaDeviceSynchronize();
+
+    if (strcmp(layer->activation, "sigmoid") == 0) {
+        // Call sigmoid activation function
+        sigmoid_kernel<<<num_blocks, threads_per_block>>>(d_output, d_output, total_elements);
+        cudaDeviceSynchronize();
+    } else { 
+        // Add other activation functions here using else if
+        printf("Activation function not implemented\n");
+    }
 
     cublasDestroy(handle);
 

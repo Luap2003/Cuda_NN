@@ -1,5 +1,5 @@
 // activations.cu
-#include "activations.h"
+#include "../include/activations.h"
 #include <math.h>
 
 __device__ float sigmoid(float x) {
