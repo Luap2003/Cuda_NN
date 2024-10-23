@@ -15,7 +15,6 @@ typedef struct {
 
 Layer* create_dense_layer(int input_size, int output_size, const char *activation);
 void forward_layer(Layer *layer, float *d_input, float *d_output, int batch_size);
-void forward_layer_no_activation(Layer *layer, float *d_input, float *d_output, int batch_size);
 void backward_layer(Layer *layer, float *d_input, float *d_output_grad, float *d_input_grad, int batch_size);
 void update_layer(Layer *layer, float learning_rate);
 void free_layer(Layer *layer);
