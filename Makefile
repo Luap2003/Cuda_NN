@@ -1,6 +1,6 @@
 # Compiler settings
 NVCC        = nvcc
-NVCC_FLAGS  = -arch=sm_86 -O2 -I./include -I/usr/local/cuda/include
+NVCC_FLAGS  = -arch=sm_86 -O2 -I./include -I/usr/local/cuda/include -lcublas
 LD_FLAGS    = -L/usr/local/cuda/lib64 -lcudart
 
 # Directories
