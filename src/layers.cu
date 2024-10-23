@@ -81,12 +81,17 @@ void forward_layer(Layer *layer, float *d_input, float *d_output, int batch_size
     if (strcmp(layer->activation, "sigmoid") == 0) {
         // Call sigmoid activation function
         sigmoid_kernel<<<num_blocks, threads_per_block>>>(d_output, d_output, total_elements);
-        cudaDeviceSynchronize();
+    } else if (strcmp(layer->activation, "relu") == 0) {
+        // Call relu activation function
+        relu_kernel<<<num_blocks, threads_per_block>>>(d_output, d_output, total_elements);
+    } else if (strcmp(layer->activation, "linear") == 0) {
+        // Call linear activation function
+        linear_kernel<<<num_blocks, threads_per_block>>>(d_output, d_output, total_elements);
     } else { 
         // Add other activation functions here using else if
         printf("Activation function not implemented\n");
     }
-
+    cudaDeviceSynchronize();
     cublasDestroy(handle);
 
 }
