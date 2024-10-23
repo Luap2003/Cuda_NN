@@ -89,7 +89,6 @@ void forward_layer(Layer *layer, float *d_input, float *d_output, int batch_size
 
     cublasDestroy(handle);
 
-    // needing to add bias
 }
 
 void free_layer(Layer *layer) {
