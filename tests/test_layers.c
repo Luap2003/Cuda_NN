@@ -448,6 +448,154 @@ void test_backward_output_layer_large(void){
     cudaFree(d_labels);
     cudaFree(d_output_delta);
 }
+
+void test_compute_output_delta(void) {
+    // Initialize test data
+    int batch_size = 2;
+    int output_size = 2;
+    int size = batch_size * output_size;
+
+    // z values from the forward pass
+    float h_z[] = {
+        0.4f, -1.0f,
+        0.5f, 0.0f
+    };
+
+    // Output activations (a^L) from the forward pass (sigmoid activation)
+    float h_output_sigmoid[4];
+    for (int i = 0; i < size; i++) {
+        h_output_sigmoid[i] = host_sigmoid(h_z[i]);
+    }
+
+    // Output activations (a^L) for linear activation (assuming linear activation is identity)
+    float h_output_linear[4];
+    for (int i = 0; i < size; i++) {
+        h_output_linear[i] = h_z[i]; // For linear activation, a = z
+    }
+
+    // Labels (y)
+    float h_labels[] = {
+        0.5f, 0.0f,
+        1.0f, 0.25f
+    };
+
+    // Expected δ^L for linear activation: (a^L - y) * 1
+    float expected_output_delta_linear[4];
+    for (int i = 0; i < size; i++) {
+        expected_output_delta_linear[i] = h_output_linear[i] - h_labels[i];
+    }
+
+    // Expected δ^L for sigmoid activation: (a^L - y) * sigmoid'(z^L)
+    float expected_output_delta_sigmoid[4];
+    for (int i = 0; i < size; i++) {
+        float sigmoid = h_output_sigmoid[i];
+        float sigma_prime = sigmoid * (1.0f - sigmoid);
+        expected_output_delta_sigmoid[i] = (h_output_sigmoid[i] - h_labels[i]) * sigma_prime;
+    }
+
+    // Allocate device memory
+    float *d_output_linear, *d_z_linear, *d_labels_linear, *d_output_delta_linear;
+    float *d_output_sigmoid, *d_z_sigmoid, *d_labels_sigmoid, *d_output_delta_sigmoid;
+
+    // Linear Activation Allocation
+    allocate_device_memory(&d_output_linear, size * sizeof(float));
+    allocate_device_memory(&d_z_linear, size * sizeof(float));
+    allocate_device_memory(&d_labels_linear, size * sizeof(float));
+    allocate_device_memory(&d_output_delta_linear, size * sizeof(float));
+
+    // Sigmoid Activation Allocation
+    allocate_device_memory(&d_output_sigmoid, size * sizeof(float));
+    allocate_device_memory(&d_z_sigmoid, size * sizeof(float));
+    allocate_device_memory(&d_labels_sigmoid, size * sizeof(float));
+    allocate_device_memory(&d_output_delta_sigmoid, size * sizeof(float));
+
+    // Copy data to device for Linear Activation
+    copy_to_device(d_output_linear, h_output_linear, size * sizeof(float));
+    copy_to_device(d_z_linear, h_z, size * sizeof(float));
+    copy_to_device(d_labels_linear, h_labels, size * sizeof(float));
+    cudaMemset(d_output_delta_linear, 0, size * sizeof(float));
+
+    // Copy data to device for Sigmoid Activation
+    copy_to_device(d_output_sigmoid, h_output_sigmoid, size * sizeof(float));
+    copy_to_device(d_z_sigmoid, h_z, size * sizeof(float));
+    copy_to_device(d_labels_sigmoid, h_labels, size * sizeof(float));
+    cudaMemset(d_output_delta_sigmoid, 0, size * sizeof(float));
+
+    // Define block and grid sizes
+    int threads = 256;
+    int blocks = (size + threads - 1) / threads;
+
+    // Create and initialize Layer for Linear Activation
+    Layer layer_linear = {
+        .input_size = 3, // Arbitrary, not used in this test
+        .output_size = output_size,
+        .activation = ACTIVATION_LINEAR,
+        .d_weights = NULL, // Not used in this test
+        .d_biases = NULL,  // Not used in this test
+        .d_output = d_output_linear,
+        .d_z = d_z_linear
+    };
+
+    // Create and initialize Layer for Sigmoid Activation
+    Layer layer_sigmoid = {
+        .input_size = 3, // Arbitrary, not used in this test
+        .output_size = output_size,
+        .activation = ACTIVATION_SIGMOID,
+        .d_weights = NULL, // Not used in this test
+        .d_biases = NULL,  // Not used in this test
+        .d_output = d_output_sigmoid,
+        .d_z = d_z_sigmoid
+    };
+
+    // Compute delta for Linear Activation
+    compute_output_delta<<<blocks, threads>>>(
+        d_output_delta_linear, // delta
+        d_output_linear,       // a^L
+        d_z_linear,            // z^L
+        d_labels_linear,       // y
+        size,
+        layer_linear.activation
+    );
+    cudaDeviceSynchronize();
+
+    compute_output_delta<<<blocks, threads>>>(
+        d_output_delta_sigmoid, // delta
+        d_output_sigmoid,       // a^L
+        d_z_sigmoid,            // z^L
+        d_labels_sigmoid,       // y
+        size,
+        layer_sigmoid.activation
+    );
+    cudaDeviceSynchronize();
+
+    // Copy results back to host
+    float h_output_delta_linear[4];
+    float h_output_delta_sigmoid[4];
+    copy_from_device(h_output_delta_linear, d_output_delta_linear, size * sizeof(float));
+    copy_from_device(h_output_delta_sigmoid, d_output_delta_sigmoid, size * sizeof(float));
+
+    for (int i = 0; i < size; i++) {
+        TEST_ASSERT_FLOAT_WITHIN(1e-4f,h_output_delta_linear[i], expected_output_delta_linear[i]);
+    }
+
+
+    for (int i = 0; i < size; i++) {
+        TEST_ASSERT_FLOAT_WITHIN(1e-4f,h_output_delta_sigmoid[i],  expected_output_delta_sigmoid[i]);
+    }
+
+    // Free device memory
+    cudaFree(d_output_linear);
+    cudaFree(d_z_linear);
+    cudaFree(d_labels_linear);
+    cudaFree(d_output_delta_linear);
+
+    cudaFree(d_output_sigmoid);
+    cudaFree(d_z_sigmoid);
+    cudaFree(d_labels_sigmoid);
+    cudaFree(d_output_delta_sigmoid);
+}
+
+
 void setUp(void) {
     // Initialize CUDA if needed
     cudaError_t err = cudaSetDevice(0);
@@ -467,5 +615,6 @@ int main(void) {
     RUN_TEST(test_forward_layer_large);
     RUN_TEST(test_backward_output_layer);
     RUN_TEST(test_backward_output_layer_large);
+    RUN_TEST(test_compute_output_delta);
     return UNITY_END();
 }

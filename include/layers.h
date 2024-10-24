@@ -52,6 +52,10 @@ void forward_layer(Layer *layer, float *d_input, float *d_output, int batch_size
 
 void backward_output_layer(Layer *layer, float *d_labels, float *d_output_delta, int batch_size);
 
+__global__ void compute_output_delta(float *d_output_delta, float *d_output, float *d_z, float *d_labels, int size, ActivationType activation);
+
+__global__ void compute_hidden_delta(float *d_current_delta, float *d_z, ActivationType activation, int size);
+
 void backward_layer(Layer *layer, float *d_input, float *d_output_grad, float *d_input_grad, int batch_size);
 
 
