@@ -595,6 +595,232 @@ void test_compute_output_delta(void) {
     cudaFree(d_output_delta_sigmoid);
 }
 
+void test_backward_layer(void) {
+    // Initialize test data
+    int batch_size = 2;
+    int input_size = 3;
+    int output_size = 2;
+
+    // Define next_layer with known weights
+    float h_next_weights[] = {
+        0.1f, 0.2f, 0.3f, // W^{l+1} for output neuron 1
+        0.4f, 0.5f, 0.6f  // W^{l+1} for output neuron 2
+    };
+
+    // Define d_output_delta from next layer (δ^{l+1})
+    float h_output_delta[] = {
+        0.1f, -0.2f,
+        0.3f, 0.4f
+    };
+
+    // Define z values for current_layer
+    float h_z[] = {
+        0.5f, -0.5f, 1.0f,  // Batch 1: z1, z2, z3
+        1.0f, -1.0f, 0.0f   // Batch 2: z1, z2, z3
+    };
+
+    // Expected sigma_prime for sigmoid activation
+    float expected_sigma_prime[input_size * batch_size];
+    for (int i = 0; i < input_size * batch_size; i++) {
+        float sigmoid = host_sigmoid(h_z[i]);
+        expected_sigma_prime[i] = sigmoid * (1.0f - sigmoid);
+    }
+
+    // Compute expected d_input_grad on host
+    // d_input_grad = W^{l+1}^T * d_output_delta
+    // Then, multiply by sigma_prime(z^l)
+
+    float expected_d_input_grad[input_size * batch_size];
+    // Initialize to zero
+    memset(expected_d_input_grad, 0, input_size * batch_size * sizeof(float));
+
+    // Compute W^{l+1}^T * d_output_delta
+    for (int i = 0; i < batch_size; i++) { // For each sample
+        for (int j = 0; j < input_size; j++) { // For each input neuron
+            for (int k = 0; k < output_size; k++) { // For each output neuron
+                expected_d_input_grad[i * input_size + j] += h_next_weights[k * input_size + j] * h_output_delta[i * output_size + k];
+            }
+            // Multiply by sigma_prime(z^l)
+            expected_d_input_grad[i * input_size + j] *= expected_sigma_prime[i * input_size + j];
+        }
+    }
+
+    // Allocate device memory
+    float *d_next_weights, *d_output_delta_dev, *d_z, *d_input_grad;
+    allocate_device_memory(&d_next_weights, output_size * input_size * sizeof(float));
+    allocate_device_memory(&d_output_delta_dev, batch_size * output_size * sizeof(float));
+    allocate_device_memory(&d_z, batch_size * input_size * sizeof(float));
+    allocate_device_memory(&d_input_grad, batch_size * input_size * sizeof(float));
+
+    // Copy data to device
+    copy_to_device(d_next_weights, h_next_weights, output_size * input_size * sizeof(float));
+    copy_to_device(d_output_delta_dev, h_output_delta, batch_size * output_size * sizeof(float));
+    copy_to_device(d_z, h_z, batch_size * input_size * sizeof(float));
+
+    // Initialize d_input_grad to zero
+    cudaMemset(d_input_grad, 0, batch_size * input_size * sizeof(float));
+
+    // Create Layer structures
+    Layer current_layer = {
+        .input_size = input_size,
+        .output_size = input_size, // Assuming input_size == current_layer->output_size
+        .activation = ACTIVATION_SIGMOID,
+        .d_weights = NULL, // Not used in this test
+        .d_biases = NULL,  // Not used in this test
+        .d_output = NULL,  // Not used in this test
+        .d_z = d_z
+    };
+
+    Layer next_layer = {
+        .input_size = input_size,
+        .output_size = output_size,
+        .activation = ACTIVATION_SIGMOID, // Activation of next layer
+        .d_weights = d_next_weights,
+        .d_biases = NULL, // Not used in this test
+        .d_output = NULL,  // Not used in this test
+        .d_z = NULL        // Not used in this test
+    };
+
+    // Call the function under test
+    backward_layer(&current_layer, &next_layer, d_output_delta_dev, d_input_grad, batch_size);
+
+    // Copy results back to host
+    float h_input_grad[input_size * batch_size];
+    copy_from_device(h_input_grad, d_input_grad, batch_size * input_size * sizeof(float));
+
+    // Verify results
+    for (int i = 0; i < batch_size * input_size; i++) {
+        TEST_ASSERT_FLOAT_WITHIN(1e-4f, expected_d_input_grad[i], h_input_grad[i]);
+    }
+
+    // Cleanup
+    cudaFree(d_next_weights);
+    cudaFree(d_output_delta_dev);
+    cudaFree(d_z);
+    cudaFree(d_input_grad);
+}
+
+void test_backward_layer_large(void) {
+    // Initialize test parameters
+    int batch_size = 128;
+    int input_size = 64;
+    int output_size = 32;
+
+    // Seed the random number generator for reproducibility (optional)
+    srand((unsigned int)time(NULL));
+
+    // Allocate host memory
+    float *h_next_weights = (float *)malloc(output_size * input_size * sizeof(float));
+    float *h_output_delta = (float *)malloc(batch_size * output_size * sizeof(float));
+    float *h_z = (float *)malloc(batch_size * input_size * sizeof(float));
+    float *expected_sigma_prime = (float *)malloc(batch_size * input_size * sizeof(float));
+    float *expected_d_input_grad = (float *)malloc(batch_size * input_size * sizeof(float));
+
+    // Initialize weights, output_delta, and z with random values
+    for (int i = 0; i < output_size * input_size; i++) {
+        h_next_weights[i] = random_float(-1.0f, 1.0f);
+    }
+    for (int i = 0; i < batch_size * output_size; i++) {
+        h_output_delta[i] = random_float(-0.5f, 0.5f);
+    }
+    for (int i = 0; i < batch_size * input_size; i++) {
+        h_z[i] = random_float(-2.0f, 2.0f);
+    }
+
+    // Compute sigma_prime on host [batch_size x input_size]
+    for (int i = 0; i < batch_size * input_size; i++) {
+        float sigmoid = host_sigmoid(h_z[i]);
+        expected_sigma_prime[i] = sigmoid * (1.0f - sigmoid);
+    }
+
+    // Compute expected d_input_grad on host
+    // d_input_grad = W^{l+1}^T * d_output_delta [input_size x batch_size]
+    // Then, multiply by sigma_prime(z^l) element-wise
+
+    // Initialize to zero
+    memset(expected_d_input_grad, 0, batch_size * input_size * sizeof(float));
+
+    // Perform matrix multiplication and element-wise multiplication
+    // For each sample in the batch
+    for (int b = 0; b < batch_size; b++) { // For each sample
+        for (int j = 0; j < input_size; j++) { // For each input neuron
+            for (int k = 0; k < output_size; k++) { // For each output neuron
+                // Accumulate the product of weights and output delta
+                expected_d_input_grad[b * input_size + j] += h_next_weights[k * input_size + j] * h_output_delta[b * output_size + k];
+            }
+            // Multiply by sigma_prime(z^l)
+            expected_d_input_grad[b * input_size + j] *= expected_sigma_prime[b * input_size + j];
+        }
+    }
+
+    // Allocate device memory
+    float *d_next_weights, *d_output_delta_dev, *d_z, *d_input_grad;
+    allocate_device_memory(&d_next_weights, output_size * input_size * sizeof(float));
+    allocate_device_memory(&d_output_delta_dev, batch_size * output_size * sizeof(float));
+    allocate_device_memory(&d_z, batch_size * input_size * sizeof(float));
+    allocate_device_memory(&d_input_grad, batch_size * input_size * sizeof(float));
+
+    // Copy data to device
+    copy_to_device(d_next_weights, h_next_weights, output_size * input_size * sizeof(float));
+    copy_to_device(d_output_delta_dev, h_output_delta, batch_size * output_size * sizeof(float));
+    copy_to_device(d_z, h_z, batch_size * input_size * sizeof(float));
+
+    // Initialize d_input_grad to zero on device
+    cudaMemset(d_input_grad, 0, batch_size * input_size * sizeof(float));
+
+    // Create Layer structures
+    Layer current_layer = {
+        .input_size = input_size,
+        .output_size = input_size, // Assuming input_size == current_layer->output_size
+        .activation = ACTIVATION_SIGMOID,
+        .d_weights = NULL, // Not used in this test
+        .d_biases = NULL,  // Not used in this test
+        .d_output = NULL,  // Not used in this test
+        .d_z = d_z
+    };
+
+    Layer next_layer = {
+        .input_size = input_size,
+        .output_size = output_size,
+        .activation = ACTIVATION_SIGMOID, // Activation of next layer
+        .d_weights = d_next_weights,
+        .d_biases = NULL, // Not used in this test
+        .d_output = NULL,  // Not used in this test
+        .d_z = NULL        // Not used in this test
+    };
+
+    // Call the function under test
+    backward_layer(&current_layer, &next_layer, d_output_delta_dev, d_input_grad, batch_size);
+
+    // Check for CUDA errors after kernel execution
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("CUDA Error after backward_layer_large: %s\n", cudaGetErrorString(err));
+        TEST_FAIL_MESSAGE("CUDA Error detected.");
+    }
+
+    // Copy results back to host
+    float *h_input_grad = (float *)malloc(batch_size * input_size * sizeof(float));
+    copy_from_device(h_input_grad, d_input_grad, batch_size * input_size * sizeof(float));
+
+    // Verify results
+    for (int i = 0; i < batch_size * input_size; i++) {
+        TEST_ASSERT_FLOAT_WITHIN(1e-3f, expected_d_input_grad[i], h_input_grad[i]);
+    }
+
+    // Cleanup
+    free(h_next_weights);
+    free(h_output_delta);
+    free(h_z);
+    free(expected_sigma_prime);
+    free(expected_d_input_grad);
+    free(h_input_grad);
+
+    cudaFree(d_next_weights);
+    cudaFree(d_output_delta_dev);
+    cudaFree(d_z);
+    cudaFree(d_input_grad);
+}
 
 void setUp(void) {
     // Initialize CUDA if needed
@@ -616,5 +842,7 @@ int main(void) {
     RUN_TEST(test_backward_output_layer);
     RUN_TEST(test_backward_output_layer_large);
     RUN_TEST(test_compute_output_delta);
+    RUN_TEST(test_backward_layer);
+    RUN_TEST(test_backward_layer_large);
     return UNITY_END();
 }

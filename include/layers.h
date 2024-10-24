@@ -23,6 +23,7 @@ typedef struct {
     float *d_biases_grad;         // Device biases gradients
     float *d_output;              // Device output activations (a^l)
     float *d_z;                   // Device pre-activation values (z^l)
+    float *d_delta;                // Device delta values (δ^l)
 } Layer;
 
 /**
@@ -51,6 +52,7 @@ Layer* create_dense_layer(int input_size, int output_size, const char *activatio
 void forward_layer(Layer *layer, float *d_input, float *d_output, int batch_size);
 
 void backward_output_layer(Layer *layer, float *d_labels, float *d_output_delta, int batch_size);
+void backward_layer(Layer *current_layer, Layer *next_layer, float *d_output_delta, float *d_input_grad, int batch_size); 
 
 __global__ void compute_output_delta(float *d_output_delta, float *d_output, float *d_z, float *d_labels, int size, ActivationType activation);
 
