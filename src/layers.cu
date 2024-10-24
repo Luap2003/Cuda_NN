@@ -64,6 +64,7 @@ void forward_layer(Layer *layer, float *d_input, float *d_output, int batch_size
     float alpha = 1.0f;
     float beta = 0.0f;
 
+    // Compute z = W * a +b
     // Perform matrix multiplication: d_output = alpha * d_input * d_weights^T + beta * d_output
     cublasStatus_t stat = cublasSgemm(handle,CUBLAS_OP_T, CUBLAS_OP_N, 
                 layer->output_size,
@@ -167,49 +168,9 @@ void backward_layer(Layer *current_layer, Layer *next_layer, float *d_output_del
     float alpha = 1.0f;
     float beta = 0.0f;
 
-    // Dimensions
-    int m = current_layer->output_size; // Number of neurons in current layer
-    int n = next_layer->output_size;    // Number of neurons in next layer
-    int k = batch_size;
+    // compute d^l = W^{l+1}^T * δ^{l+1} \circ σ'(z^l)
 
-    // Allocate memory for delta of the current layer
-    float *d_current_delta;
-    cudaMalloc(&d_current_delta, batch_size * current_layer->output_size * sizeof(float));
-    cudaMemset(d_current_delta, 0, batch_size * current_layer->output_size * sizeof(float));
-
-    // Compute (W^{l+1})^T * δ^{l+1}
-    // Using cublasSgemm: C = alpha * A * B + beta * C
-    // A: d_weights of next layer [output_size_next x input_size_next]
-    // B: d_output_delta of next layer [batch_size x output_size_next]
-    // We need to compute A^T [input_size_next x output_size_next] * B^T [output_size_next x batch_size] = [input_size_next x batch_size]
-    // Transpose operations accordingly
-    cublasStatus_t stat = cublasSgemm(handle,
-                                     CUBLAS_OP_T, CUBLAS_OP_T,
-                                     current_layer->output_size, batch_size, next_layer->output_size,
-                                     &alpha,
-                                     next_layer->d_weights, next_layer->input_size,      // A^T
-                                     d_output_delta, next_layer->output_size,            // B^T
-                                     &beta,
-                                     d_current_delta, current_layer->output_size);      // C
-
-    if (stat != CUBLAS_STATUS_SUCCESS) {
-        printf("cublasSgemm for hidden layer delta failed\n");
-    }
-
-    // Element-wise multiply with σ'(z^l)
-    int size = batch_size * current_layer->output_size;
-    int threads = THREADS_PER_BLOCK;
-    int blocks = (size + threads - 1) / threads;
-
-    // Launch kernel to compute δ^l = (W^{l+1}^T * δ^{l+1}) * σ'(z^l)
-    compute_hidden_delta<<<blocks, threads>>>(d_current_delta, current_layer->d_z, current_layer->activation, size);
-    cudaDeviceSynchronize();
-
-    // Now, d_current_delta contains δ^l, which can be used to compute gradients
-    // Proceed to compute gradients...
-
-    // Free temporary memory
-    cudaFree(d_current_delta);
+    
 
     // Destroy CUBLAS handle
     cublasDestroy(handle);
