@@ -1,5 +1,7 @@
 #include "../tests/unity/unity.h"
 #include "../include/layers.h"
+#include "unity/unity_internals.h"
+#include <cstdio>
 #include <string.h>
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
@@ -69,7 +71,7 @@ void test_forward_layer(void) {
     Layer layer = {
         .input_size = input_size,
         .output_size = output_size,
-        .activation = "linear",
+        .activation = ACTIVATION_LINEAR,
         .d_weights = d_weights,
         .d_biases = d_biases,
           // Test without activation first
@@ -87,14 +89,13 @@ void test_forward_layer(void) {
     }
     
     // Test with sigmoid activation
-    layer.activation = "sigmoid";
+    layer.activation = ACTIVATION_SIGMOID;
     forward_layer(&layer, d_input, d_output, batch_size);
     copy_from_device(h_output, d_output, batch_size * output_size * sizeof(float));
     
     float expected_sigmoid_output[4];
     for (int i = 0; i < batch_size * output_size; i++) {
         expected_sigmoid_output[i] = host_sigmoid(expected_output[i]);
-        printf("Sigmoid of %.2f = %.10f\n", expected_output[i], expected_sigmoid_output[i]);
     }
     
     for (int i = 0; i < batch_size * output_size; i++) {
@@ -106,6 +107,120 @@ void test_forward_layer(void) {
     cudaFree(d_weights);
     cudaFree(d_biases);
     cudaFree(d_output);
+}
+
+void test_backward_output_layer(void) {
+    
+    // Initialize test data
+    int batch_size = 2;
+    int output_size = 2;
+
+    // z values from the forward pass
+    float h_z[] = {
+        0.4f, -1.0f,
+        0.5f, 0.0f
+    };
+
+    // Output activations (a^L) from the forward pass
+    float h_output[4];
+    for (int i = 0; i < 4; i++) {
+        h_output[i] = 1.0f / (1.0f + expf(-h_z[i]));
+    }
+
+    // Labels (y)
+    float h_labels[] = {
+        0.5f, 0.0f,
+        1.0f, 0.25f
+    };
+    
+    // Expected δ^L for linear activation: (a^L - y) * 1
+    float expected_output_delta_linear[4];
+    for (int i = 0; i < 4; i++) {
+        expected_output_delta_linear[i] = h_output[i] - h_labels[i];
+    }
+    
+    // Expected δ^L for sigmoid activation: (a^L - y) * sigmoid'(z^L)
+    float expected_output_delta_sigmoid[4];
+    for (int i = 0; i < 4; i++) {
+        float sigmoid = host_sigmoid(h_z[i]);
+        float sigma_prime = sigmoid * (1.0f - sigmoid);
+        expected_output_delta_sigmoid[i] = (h_output[i] - h_labels[i]) * sigma_prime;
+    }
+    
+    // Allocate device memory
+    float *d_output, *d_z, *d_labels, *d_output_delta;
+    allocate_device_memory(&d_output, batch_size * output_size * sizeof(float));
+    allocate_device_memory(&d_z, batch_size * output_size * sizeof(float));
+    allocate_device_memory(&d_labels, batch_size * output_size * sizeof(float));
+    allocate_device_memory(&d_output_delta, batch_size * output_size * sizeof(float));
+    
+    // Copy data to device
+    copy_to_device(d_output, h_output, batch_size * output_size * sizeof(float));
+    copy_to_device(d_z, h_z, batch_size * output_size * sizeof(float));
+    copy_to_device(d_labels, h_labels, batch_size * output_size * sizeof(float));
+    
+    // Initialize d_output_delta to zero
+    cudaMemset(d_output_delta, 0, batch_size * output_size * sizeof(float));
+    
+    // Create and initialize layer for linear activation
+    Layer layer_linear = {
+        .input_size = 3, // Arbitrary, not used in this test
+        .output_size = output_size,
+        .activation = ACTIVATION_LINEAR,
+        .d_weights = NULL, // Not used in this test
+        .d_biases = NULL,  // Not used in this test
+        .d_output = d_output,
+        .d_z = d_z
+    };
+    
+    // Call the function under test for linear activation
+    backward_output_layer(&layer_linear, d_labels, d_output_delta, batch_size);
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("CUDA Error after backward_output_layer (linear): %s\n", cudaGetErrorString(err));
+    }
+    cudaDeviceSynchronize();
+    // Copy results back to host
+    float h_output_delta_linear[4] = {0};
+    
+    copy_from_device(h_output_delta_linear, d_output_delta, batch_size * output_size * sizeof(float));
+    
+    // Verify results for linear activation
+    for (int i = 0; i < batch_size * output_size; i++) {
+        TEST_ASSERT_FLOAT_WITHIN(1e-4f, expected_output_delta_linear[i], h_output_delta_linear[i]);
+    }
+    
+    // Reset d_output_delta to zero for sigmoid activation test
+    cudaMemset(d_output_delta, 0, batch_size * output_size * sizeof(float));
+    
+    // Create and initialize layer for sigmoid activation
+    Layer layer_sigmoid = {
+        .input_size = 3, // Arbitrary, not used in this test
+        .output_size = output_size,
+        .activation = ACTIVATION_SIGMOID,
+        .d_weights = NULL, // Not used in this test
+        .d_biases = NULL,  // Not used in this test
+        .d_output = d_output,
+        .d_z = d_z
+    };
+    
+    // Call the function under test for sigmoid activation
+    backward_output_layer(&layer_sigmoid, d_labels, d_output_delta, batch_size);
+    
+    // Copy results back to host
+    float h_output_delta_sigmoid[4] = {0};
+    copy_from_device(h_output_delta_sigmoid, d_output_delta, batch_size * output_size * sizeof(float));
+    
+    // Verify results for sigmoid activation
+    for (int i = 0; i < batch_size * output_size; i++) {
+        TEST_ASSERT_FLOAT_WITHIN(1e-4f, expected_output_delta_sigmoid[i], h_output_delta_sigmoid[i]);
+    }
+    
+    // Cleanup
+    cudaFree(d_output);
+    cudaFree(d_z);
+    cudaFree(d_labels);
+    cudaFree(d_output_delta);
 }
 
 void setUp(void) {
@@ -123,5 +238,6 @@ void tearDown(void) {
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_forward_layer);
+    RUN_TEST(test_backward_output_layer);
     return UNITY_END();
 }

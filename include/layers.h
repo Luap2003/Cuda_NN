@@ -8,16 +8,21 @@
 
 #ifndef LAYERS_H
 #define LAYERS_H
+#include "activations.h"
 #define THREADS_PER_BLOCK 256
 typedef struct {
     char *type;           // e.g. "dense"
     int input_size;
     int output_size;
-    const char *activation;     // e.g. "relu"
+    ActivationType activation;
     float *weights;       // Host weights
     float *biases;        // Host biases
     float *d_weights;     // Device weights
     float *d_biases;      // Device biases
+    float *d_weights_grad;        // Device weights gradients
+    float *d_biases_grad;         // Device biases gradients
+    float *d_output;              // Device output activations (a^l)
+    float *d_z;                   // Device pre-activation values (z^l)
 } Layer;
 
 /**
@@ -46,6 +51,7 @@ Layer* create_dense_layer(int input_size, int output_size, const char *activatio
 void forward_layer(Layer *layer, float *d_input, float *d_output, int batch_size);
 
 
+void backward_output_layer(Layer *layer, float *d_labels, float *d_output_delta, int batch_size);
 void backward_layer(Layer *layer, float *d_input, float *d_output_grad, float *d_input_grad, int batch_size);
 
 
