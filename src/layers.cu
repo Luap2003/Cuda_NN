@@ -104,14 +104,6 @@ void forward_layer(Layer *layer, float *d_input, float *d_output, int batch_size
 
 }
 
-__device__ int my_strcmp(const char *str1, const char *str2) {
-    while (*str1 && (*str1 == *str2)) {
-        str1++;
-        str2++;
-    }
-    return *(unsigned char *)str1 - *(unsigned char *)str2;
-}
-
 __global__ void compute_output_delta(float *d_output_delta, float *d_output, float *d_z, float *d_labels, int size, ActivationType activation) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < size) {
@@ -239,7 +231,22 @@ void print_layer(Layer *layer) {
     printf("Type: %s\n", layer->type);
     printf("Input Size: %d\n", layer->input_size);
     printf("Output Size: %d\n", layer->output_size);
-    printf("Activation: %s\n", layer->activation);
+    const char* activation_str;
+    switch (layer->activation) {
+        case ACTIVATION_SIGMOID:
+            activation_str = "sigmoid";
+            break;
+        case ACTIVATION_RELU:
+            activation_str = "relu";
+            break;
+        case ACTIVATION_LINEAR:
+            activation_str = "linear";
+            break;
+        default:
+            activation_str = "unknown or not implemented (maybe forgot to add it to print_layer)";
+            break;
+    }
+    printf("Activation: %s\n", activation_str);
 
     // Print a snippet of weights and biases
     int num_weights_to_print = 5;

@@ -50,8 +50,8 @@ Layer* create_dense_layer(int input_size, int output_size, const char *activatio
  */
 void forward_layer(Layer *layer, float *d_input, float *d_output, int batch_size);
 
-
 void backward_output_layer(Layer *layer, float *d_labels, float *d_output_delta, int batch_size);
+
 void backward_layer(Layer *layer, float *d_input, float *d_output_grad, float *d_input_grad, int batch_size);
 
 
