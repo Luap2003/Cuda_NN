@@ -9,12 +9,14 @@
 #ifndef LAYERS_H
 #define LAYERS_H
 #include "activations.h"
+#include "lossFunction.h"
 #define THREADS_PER_BLOCK 256
 typedef struct {
     char *type;           // e.g. "dense"
     int input_size;
     int output_size;
     ActivationType activation;
+    LossFunction loss_function;
     float *weights;       // Host weights
     float *biases;        // Host biases
     float *d_weights;     // Device weights
@@ -54,8 +56,7 @@ void forward_layer(Layer *layer, float *d_input, float *d_output, int batch_size
 void backward_output_layer(Layer *layer, float *d_labels, float *d_output_delta, int batch_size);
 void backward_layer(Layer *current_layer, Layer *next_layer, float *d_output_delta, float *d_input_grad, int batch_size); 
 
-__global__ void compute_output_delta(float *d_output_delta, float *d_output, float *d_z, float *d_labels, int size, ActivationType activation);
-
+__global__ void compute_output_delta(float *d_output_delta, float *d_output, float *d_z, float *d_labels, int size, ActivationType activation, LossFunction loss_function);
 __global__ void compute_hidden_delta(float *d_current_delta, float *d_z, ActivationType activation, int size);
 
 void backward_layer(Layer *layer, float *d_input, float *d_output_grad, float *d_input_grad, int batch_size);

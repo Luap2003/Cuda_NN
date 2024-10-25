@@ -530,6 +530,7 @@ void test_compute_output_delta(void) {
         .input_size = 3, // Arbitrary, not used in this test
         .output_size = output_size,
         .activation = ACTIVATION_LINEAR,
+        .loss_function = LOSS_MSE,
         .d_weights = NULL, // Not used in this test
         .d_biases = NULL,  // Not used in this test
         .d_output = d_output_linear,
@@ -541,6 +542,7 @@ void test_compute_output_delta(void) {
         .input_size = 3, // Arbitrary, not used in this test
         .output_size = output_size,
         .activation = ACTIVATION_SIGMOID,
+        .loss_function = LOSS_MSE,
         .d_weights = NULL, // Not used in this test
         .d_biases = NULL,  // Not used in this test
         .d_output = d_output_sigmoid,
@@ -554,7 +556,8 @@ void test_compute_output_delta(void) {
         d_z_linear,            // z^L
         d_labels_linear,       // y
         size,
-        layer_linear.activation
+        layer_linear.activation,
+        layer_linear.loss_function
     );
     cudaDeviceSynchronize();
 
@@ -564,7 +567,8 @@ void test_compute_output_delta(void) {
         d_z_sigmoid,            // z^L
         d_labels_sigmoid,       // y
         size,
-        layer_sigmoid.activation
+        layer_sigmoid.activation,
+        layer_sigmoid.loss_function
     );
     cudaDeviceSynchronize();
 

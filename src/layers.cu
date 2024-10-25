@@ -1,6 +1,7 @@
 // layers.cu
 #include "../include/layers.h"
 #include "../include/activations.h"
+#include "../include/lossFunction.h"
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
 #include <stdlib.h>
@@ -105,27 +106,38 @@ void forward_layer(Layer *layer, float *d_input, float *d_output, int batch_size
 
 }
 
-__global__ void compute_output_delta(float *d_output_delta, float *d_output, float *d_z, float *d_labels, int size, ActivationType activation) {
+__device__ float compute_activation_derivative(float z, ActivationType activation) {
+    float sigma_prime = 1.0f; // Default for linear activation
+    if (activation == ACTIVATION_SIGMOID) {
+        float sigmoid = 1.0f / (1.0f + expf(-z));
+        sigma_prime = sigmoid * (1.0f - sigmoid);
+    } else if (activation == ACTIVATION_RELU) {
+        sigma_prime = z > 0 ? 1.0f : 0.0f;
+    }
+    // Add other activations if necessary
+    return sigma_prime;
+}
+
+__global__ void compute_output_delta(float *d_output_delta, float *d_output, float *d_z, float *d_labels, int size, ActivationType activation, LossFunction loss_function) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < size) {
-        // Compute (a^L - y)
-        float error = d_output[idx] - d_labels[idx];
+        float delta = d_output[idx] - d_labels[idx]; // (a^L - y)
+        float sigma_prime = compute_activation_derivative(d_z[idx], activation);
 
-        // Compute σ'(z^L)
-        float sigma_prime;
-        if (activation == ACTIVATION_SIGMOID) {
-            float sigmoid = 1.0f / (1.0f + expf(-d_z[idx]));
-            sigma_prime = sigmoid * (1.0f - sigmoid);
-        } else if (activation == ACTIVATION_RELU) {
-            sigma_prime = d_z[idx] > 0 ? 1.0f : 0.0f;
-        } else if (activation == ACTIVATION_LINEAR) {
-            sigma_prime = 1.0f;
-        } else {
-            sigma_prime = 1.0f; // Default to linear if unknown
+        if (loss_function == LOSS_MSE) {
+            // δ^L = (a^L - y) * σ'(z^L)
+            d_output_delta[idx] = delta * sigma_prime;
         }
-
-        // Compute δ^L = (a^L - y) * σ'(z^L)
-        d_output_delta[idx] = error * sigma_prime;
+        else if (loss_function == LOSS_CROSSENTROPY && activation == ACTIVATION_SIGMOID) {
+            // δ^L = (a^L - y)
+            d_output_delta[idx] = delta;
+        }
+        else {
+            // Handle other combinations or raise an error
+            // For example, cross-entropy with softmax, etc.
+            // Here, we'll default to multiplying by sigma_prime
+            d_output_delta[idx] = delta * sigma_prime;
+        }
     }
 }
 
@@ -135,7 +147,7 @@ void backward_output_layer(Layer *layer, float *d_labels, float *d_output_delta,
     int blocks = (size + threads - 1) / threads;
 
     // Launch kernel to compute δ^L
-    compute_output_delta<<<blocks, threads>>>(d_output_delta, layer->d_output, layer->d_z, d_labels, size, layer->activation);
+    compute_output_delta<<<blocks, threads>>>(d_output_delta, layer->d_output, layer->d_z, d_labels, size, layer->activation, layer->loss_function);
     cudaDeviceSynchronize();
 }
 
