@@ -39,7 +39,7 @@ typedef struct {
  * @param activation  Activation function name (e.g., "relu", "sigmoid").
  * @return Pointer to the newly created Layer, or NULL on failure.
  */
-Layer* create_dense_layer(int input_size, int output_size, const char *activation);
+Layer* create_dense_layer(int input_size, int output_size, ActivationType activation);
 
 /**
  * @brief Performs forward propagation through the given layer.

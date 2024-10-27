@@ -1,6 +1,5 @@
-#include "../tests/unity/unity.h"
-#include "../include/layers.h"
-#include "unity/unity_internals.h"
+#include "../../tests/unity/unity.h"
+#include "../../include/layers.h"
 #include <cstdio>
 #include <string.h>
 #include <cuda_runtime.h>
@@ -826,27 +825,27 @@ void test_backward_layer_large(void) {
     cudaFree(d_input_grad);
 }
 
-void setUp(void) {
-    // Initialize CUDA if needed
-    cudaError_t err = cudaSetDevice(0);
-    TEST_ASSERT_EQUAL(cudaSuccess, err);
-}
-
-void tearDown(void) {
-    // Reset device if needed
-    cudaError_t err = cudaDeviceReset();
-    TEST_ASSERT_EQUAL(cudaSuccess, err);
-}
-
-int main(void) {
-    srand((unsigned int)time(NULL));
-    UNITY_BEGIN();
-    RUN_TEST(test_forward_layer);
-    RUN_TEST(test_forward_layer_large);
-    RUN_TEST(test_backward_output_layer);
-    RUN_TEST(test_backward_output_layer_large);
-    RUN_TEST(test_compute_output_delta);
-    RUN_TEST(test_backward_layer);
-    RUN_TEST(test_backward_layer_large);
-    return UNITY_END();
-}
+//void setUp(void) {
+//    // Initialize CUDA if needed
+//    cudaError_t err = cudaSetDevice(0);
+//    TEST_ASSERT_EQUAL(cudaSuccess, err);
+//}
+//
+//void tearDown(void) {
+//    // Reset device if needed
+//    cudaError_t err = cudaDeviceReset();
+//    TEST_ASSERT_EQUAL(cudaSuccess, err);
+//}
+//
+//int main(void) {
+//    srand((unsigned int)time(NULL));
+//    UNITY_BEGIN();
+//    RUN_TEST(test_forward_layer);
+//    RUN_TEST(test_forward_layer_large);
+//    RUN_TEST(test_backward_output_layer);
+//    RUN_TEST(test_backward_output_layer_large);
+//    RUN_TEST(test_compute_output_delta);
+//    RUN_TEST(test_backward_layer);
+//    RUN_TEST(test_backward_layer_large);
+//    return UNITY_END();
+//}
