@@ -2,7 +2,7 @@ import numpy as np
 from tensorflow.keras.datasets import mnist
 import matplotlib.pyplot as plt
 from layer import Layer
-
+from nn import NeuralNetwork
 def main():
     # Load the MNIST dataset
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -39,41 +39,14 @@ def main():
         expZ = np.exp(Z - np.max(Z, axis=0, keepdims=True))  # Stability improvement
         return expZ / np.sum(expZ, axis=0, keepdims=True)
 
-    # Initialize layers with random weights
-    layer1 = Layer(m_train, n_input, n_1, akt_func=relu)
-    layer2 = Layer(m_train, n_1, n_2, akt_func=softmax)
+    NN = NeuralNetwork(m_train, num_epochs)
+    NN.add_layer(n_input, 256, relu)
+    NN.add_layer(256,64,relu)
+    NN.add_layer(64, n_2, softmax)
 
-    # Training loop
-    for epoch in range(num_epochs):
-        # Forward pass
-        layer1.forward_prog(x_train)
-        layer2.forward_prog(layer1.A)
+    NN.train(learning_rate, x_train, y_train_encoded)
 
-        # Compute loss (cross-entropy loss)
-        loss = -np.sum(y_train_encoded * np.log(layer2.A + 1e-8)) / m_train
-        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {loss:.4f}")
-
-        # Backward pass
-        # Output layer
-        layer2.backword_prog_output(y_train_encoded, layer1.A)
-        # Hidden layer
-        layer1.backward_prog(layer2.w, layer2.dZ, x_train)
-
-        # Update weights and biases
-        layer1.update(learning_rate)
-        layer2.update(learning_rate)
-
-    # Evaluate on test set
-    # Forward pass
-    layer1.m = m_test  # Update the number of examples for test data
-    layer2.m = m_test
-    layer1.forward_prog(x_test)
-    layer2.forward_prog(layer1.A)
-
-    # Predictions
-    predictions = np.argmax(layer2.A, axis=0)
-    accuracy = np.mean(predictions == y_test)
-    print(f"Test Accuracy: {accuracy * 100:.2f}%")
+    NN.test(m_test, x_test, y_test_encoded)
 
 if __name__ == "__main__":
     main()
