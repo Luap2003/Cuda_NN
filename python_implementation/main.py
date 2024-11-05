@@ -23,8 +23,8 @@ def main():
     y_test_encoded[y_test, np.arange(m_test)] = 1
 
     # Set hyperparameters
-    num_epochs = 1000
-    learning_rate = 0.1
+    num_epochs = 100
+    learning_rate = 0.3
 
     # Initialize layers
     n_input = 784   # Input layer size
@@ -40,13 +40,39 @@ def main():
         return expZ / np.sum(expZ, axis=0, keepdims=True)
 
     NN = NeuralNetwork(m_train, num_epochs)
-    NN.add_layer(n_input, 256, relu)
-    NN.add_layer(256,64,relu)
+    NN.add_layer(n_input, 64, relu)
     NN.add_layer(64, n_2, softmax)
 
     NN.train(learning_rate, x_train, y_train_encoded)
 
     NN.test(m_test, x_test, y_test_encoded)
+# Visualization
+    # Select 100 random test samples
+    num_images = 100
+    indices = np.random.choice(m_test, num_images, replace=False)
+    sample_images = x_test[:, indices]  # Shape: (784, 100)
+    sample_true_labels = y_test[indices]  # Shape: (100,)
+
+    # Get predictions for the sample images
+    input_data = sample_images
+    for layer in NN.layers:
+        layer.forward_prog(input_data)
+        input_data = layer.A
+    sample_predictions = np.argmax(NN.layers[-1].A, axis=0)  # Shape: (100,)
+
+    # Plot the images with predicted and true labels
+    fig, axes = plt.subplots(10, 10, figsize=(15, 15))
+    axes = axes.ravel()
+
+    for i in range(num_images):
+        img = sample_images[:, i].reshape(28, 28)
+        axes[i].imshow(img, cmap='gray')
+        axes[i].axis('off')
+        axes[i].set_title(f'Pred: {sample_predictions[i]}\nTrue: {sample_true_labels[i]}', fontsize=8)
+
+    plt.tight_layout()
+    plt.show()
+    plt.savefig("temp.png")
 
 if __name__ == "__main__":
     main()
