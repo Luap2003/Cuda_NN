@@ -23,7 +23,7 @@ def main():
     y_test_encoded[y_test, np.arange(m_test)] = 1
 
     # Set hyperparameters
-    num_epochs = 100
+    num_epochs = 1000
     learning_rate = 0.3
 
     # Initialize layers

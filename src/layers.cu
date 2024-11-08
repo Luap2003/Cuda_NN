@@ -59,6 +59,19 @@ __global__ void add_bias(float *d_output, float *d_biases, int batch_size, int o
 }
 
 void forward_layer(Layer *layer, float *d_input, float *d_output, int batch_size) {
+
+    if (layer->d_input == NULL || layer->batch_size != batch_size) {
+        if (layer->d_input != NULL) {
+            cudaFree(layer->d_input);
+        }
+        cudaMalloc(&(layer->d_input), batch_size * layer->input_size * sizeof(float));
+        layer->batch_size = batch_size;
+    }
+
+    // Copy d_input to layer->d_input
+    cudaMemcpy(layer->d_input, d_input, batch_size * layer->input_size * sizeof(float), cudaMemcpyDeviceToDevice);
+
+
     cublasHandle_t handle;
     cublasCreate(&handle);
 
@@ -141,14 +154,78 @@ __global__ void compute_output_delta(float *d_output_delta, float *d_output, flo
     }
 }
 
-void backward_output_layer(Layer *layer, float *d_labels, float *d_output_delta, int batch_size) {
+__global__ void set_ones(float *d_ones, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        d_ones[idx] = 1.0f;
+    }
+}
+
+void backward_output_layer(Layer *layer, float *d_labels, int batch_size){
     int size = batch_size * layer->output_size;
     int threads = THREADS_PER_BLOCK;
     int blocks = (size + threads - 1) / threads;
 
     // Launch kernel to compute δ^L
-    compute_output_delta<<<blocks, threads>>>(d_output_delta, layer->d_output, layer->d_z, d_labels, size, layer->activation, layer->loss_function);
+    compute_output_delta<<<blocks, threads>>>(layer->d_output_delta, layer->d_output, layer->d_z, d_labels, size, layer->activation, layer->loss_function);
     cudaDeviceSynchronize();
+
+     cublasHandle_t handle;
+    cublasCreate(&handle);
+
+    float alpha = 1.0f;
+    float beta = 0.0f;
+
+    // Compute d_weights_grad = (a^{L-1})^T * δ^L
+    cublasStatus_t stat = cublasSgemm(handle,
+                                      CUBLAS_OP_T, CUBLAS_OP_N,
+                                      layer->input_size,    // M
+                                      layer->output_size,   // N
+                                      batch_size,           // K
+                                      &alpha,
+                                      layer->d_input,       // A
+                                      batch_size,           // lda
+                                      layer->d_output_delta,// B
+                                      batch_size,           // ldb
+                                      &beta,
+                                      layer->d_weights_grad,// C
+                                      layer->input_size);   // ldc
+
+    if (stat != CUBLAS_STATUS_SUCCESS) {
+        printf("cublasSgemm failed in backward_output_layer\n");
+    }
+
+    // Compute d_biases_grad = sum over batch of δ^L
+    // Allocate and initialize d_ones
+    float *d_ones;
+    cudaMalloc(&d_ones, batch_size * sizeof(float));
+    int num_blocks = (batch_size + threads - 1) / threads;
+    set_ones<<<num_blocks, threads>>>(d_ones, batch_size);
+    cudaDeviceSynchronize();
+
+    // Compute d_biases_grad = δ^L^T * d_ones
+    cublasStatus_t stat2 = cublasSgemv(handle,
+                                       CUBLAS_OP_T,
+                                       batch_size,              // m
+                                       layer->output_size,      // n
+                                       &alpha,
+                                       layer->d_output_delta,   // A
+                                       batch_size,              // lda
+                                       d_ones,                  // x
+                                       1,                       // incx
+                                       &beta,
+                                       layer->d_biases_grad,    // y
+                                       1);                      // incy
+
+    if (stat2 != CUBLAS_STATUS_SUCCESS) {
+        printf("cublasSgemv failed in backward_output_layer\n");
+    }
+
+    // Clean up
+    cudaFree(d_ones);
+    cublasDestroy(handle);
+
+    
 }
 
 __global__ void compute_hidden_delta(float *d_current_delta, float *d_z, ActivationType activation, int size) {

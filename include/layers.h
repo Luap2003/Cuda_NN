@@ -19,11 +19,15 @@ typedef struct {
     LossFunction loss_function;
     float *weights;       // Host weights
     float *biases;        // Host biases
+    float *d_input;       // 
+    float *d_input_grad;  // Device input gradients
+    int batch_size;
     float *d_weights;     // Device weights
     float *d_biases;      // Device biases
     float *d_weights_grad;        // Device weights gradients
     float *d_biases_grad;         // Device biases gradients
     float *d_output;              // Device output activations (a^l)
+    float *d_output_delta;        // Device output delta values (δ^L)
     float *d_z;                   // Device pre-activation values (z^l)
     float *d_delta;                // Device delta values (δ^l)
 } Layer;
@@ -53,7 +57,7 @@ Layer* create_dense_layer(int input_size, int output_size, ActivationType activa
  */
 void forward_layer(Layer *layer, float *d_input, float *d_output, int batch_size);
 
-void backward_output_layer(Layer *layer, float *d_labels, float *d_output_delta, int batch_size);
+void backward_output_layer(Layer *layer, float *d_labels, int batch_size);
 void backward_layer(Layer *current_layer, Layer *next_layer, float *d_output_delta, float *d_input_grad, int batch_size); 
 
 __global__ void compute_output_delta(float *d_output_delta, float *d_output, float *d_z, float *d_labels, int size, ActivationType activation, LossFunction loss_function);
@@ -61,6 +65,7 @@ __global__ void compute_hidden_delta(float *d_current_delta, float *d_z, Activat
 
 void backward_layer(Layer *layer, float *d_input, float *d_output_grad, float *d_input_grad, int batch_size);
 
+void compute_gradients(Layer *layer, float *d_input, float *d_delta, int batch_size);
 
 void update_layer(Layer *layer, float learning_rate);
 
