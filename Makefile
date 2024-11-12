@@ -68,3 +68,6 @@ clean:
 	rm -rf $(OBJ_DIR)/*.o $(TARGET) $(TEST_TARGET)
 
 .PHONY: all clean test
+
+docs:
+	doxygen Doxyfile
