@@ -3,9 +3,8 @@
 #define Optimizer_H
 
 typedef struct {
-    char *type;           // e.g "adam" 
+  char *type; // e.g "adam"
 
 } Optimizer;
-
 
 #endif // Optimizer_H
