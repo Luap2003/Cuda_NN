@@ -61,7 +61,7 @@ int main() {
 
     // Training parameters
     int batch_size = 64;
-    int num_epochs = 100;
+    int num_epochs = 20;
     float learning_rate = 0.01f;
 
     // Initialize Neural Network

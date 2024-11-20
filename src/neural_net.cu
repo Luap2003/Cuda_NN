@@ -48,7 +48,7 @@ void neural_network_init(NeuralNetwork *nn, int num_layers, int *layer_sizes, Ac
 
 void neural_network_train(NeuralNetwork *nn, float *train_images, float *train_labels, int num_train_samples) {
     int m = nn->batch_size;
-    int num_batches = num_train_samples / m;
+    int num_batches = (num_train_samples + m - 1) / m; // Ensure all samples are included
 
     int input_size = nn->layer_sizes[0];
     int output_size = nn->layer_sizes[nn->num_layers - 1];
@@ -63,8 +63,24 @@ void neural_network_train(NeuralNetwork *nn, float *train_images, float *train_l
     cudaMalloc((void**)&X_train_d, input_batch_size);
     cudaMalloc((void**)&Y_train_d, label_batch_size);
 
+    // Initialize indices array for shuffling
+    int *indices = (int *)malloc(num_train_samples * sizeof(int));
+    for (int i = 0; i < num_train_samples; ++i) {
+        indices[i] = i;
+    }
+
+    // Seed the random number generator
+    srand(time(NULL));
+
     for (int epoch = 0; epoch < nn->num_epochs; ++epoch) {
-        //printf("Epoch %d/%d\n", epoch + 1, nn->num_epochs);
+        // Shuffle the indices array
+        for (int i = num_train_samples - 1; i > 0; --i) {
+            int j = rand() % (i + 1);
+            int temp = indices[i];
+            indices[i] = indices[j];
+            indices[j] = temp;
+        }
+
         clock_t start_time = clock();
 
         float total_loss = 0.0f;
@@ -72,13 +88,32 @@ void neural_network_train(NeuralNetwork *nn, float *train_images, float *train_l
         int correct_predictions = 0;
 
         for (int batch = 0; batch < num_batches; ++batch) {
-            // Get batch data
-            float *X_batch = train_images + batch * m * input_size;
-            float *Y_batch = train_labels + batch * m * output_size;
+            // Calculate current batch size (handle last batch)
+            int batch_start = batch * m;
+            int current_batch_size = ((batch_start + m) > num_train_samples) ? (num_train_samples - batch_start) : m;
+
+            // Allocate host memory for batch data
+            float *X_batch = (float *)malloc(input_size * current_batch_size * sizeof(float));
+            float *Y_batch = (float *)malloc(output_size * current_batch_size * sizeof(float));
+
+            // Gather batch data using shuffled indices
+            for (int i = 0; i < current_batch_size; ++i) {
+                int idx = indices[batch_start + i];
+                // Copy input data
+                memcpy(&X_batch[i * input_size], &train_images[idx * input_size], input_size * sizeof(float));
+                // Copy label data
+                memcpy(&Y_batch[i * output_size], &train_labels[idx * output_size], output_size * sizeof(float));
+            }
 
             // Copy batch data to device
-            cudaMemcpy(X_train_d, X_batch, input_batch_size, cudaMemcpyHostToDevice);
-            cudaMemcpy(Y_train_d, Y_batch, label_batch_size, cudaMemcpyHostToDevice);
+            cudaMemcpy(X_train_d, X_batch, input_size * current_batch_size * sizeof(float), cudaMemcpyHostToDevice);
+            cudaMemcpy(Y_train_d, Y_batch, output_size * current_batch_size * sizeof(float), cudaMemcpyHostToDevice);
+
+            // Update batch size in neural network and layers
+            nn->batch_size = current_batch_size;
+            for (int i = 0; i < nn->num_layers - 1; ++i) {
+                nn->layers[i].m = current_batch_size;
+            }
 
             // Forward propagation
             float *A_prev_d = X_train_d;
@@ -89,23 +124,25 @@ void neural_network_train(NeuralNetwork *nn, float *train_images, float *train_l
 
             // Copy predictions back to host
             Layer *output_layer = &nn->layers[nn->num_layers - 2];
-            float *A_output_h = (float *)malloc(output_size * m * sizeof(float));
-            cudaMemcpy(A_output_h, output_layer->A_d, output_size * m * sizeof(float), cudaMemcpyDeviceToHost);
+            float *A_output_h = (float *)malloc(output_size * current_batch_size * sizeof(float));
+            cudaMemcpy(A_output_h, output_layer->A_d, output_size * current_batch_size * sizeof(float), cudaMemcpyDeviceToHost);
 
             // Compute batch loss and accuracy
             float batch_loss = 0.0f;
-            for (int i = 0; i < m; ++i) {
+            for (int i = 0; i < current_batch_size; ++i) {
                 for (int j = 0; j < output_size; ++j) {
                     float y_ij = Y_batch[i * output_size + j];
                     float p_ij = A_output_h[i * output_size + j];
-                    batch_loss -= y_ij * logf(p_ij + 1e-7f);
+                    // Clamp p_ij to avoid log(0)
+                    float p_ij_clamped = fmaxf(p_ij, 1e-7f);
+                    batch_loss -= y_ij * logf(p_ij_clamped);
                 }
             }
             total_loss += batch_loss;
-            total_samples += m;
+            total_samples += current_batch_size;
 
             // Compute accuracy
-            for (int i = 0; i < m; ++i) {
+            for (int i = 0; i < current_batch_size; ++i) {
                 int predicted_label = 0;
                 float max_prob = A_output_h[i * output_size];
                 for (int j = 1; j < output_size; ++j) {
@@ -127,6 +164,9 @@ void neural_network_train(NeuralNetwork *nn, float *train_images, float *train_l
                 }
             }
 
+            // Free host memory for batch data
+            free(X_batch);
+            free(Y_batch);
             free(A_output_h);
 
             // Backward propagation
@@ -161,6 +201,7 @@ void neural_network_train(NeuralNetwork *nn, float *train_images, float *train_l
 
     cudaFree(X_train_d);
     cudaFree(Y_train_d);
+    free(indices); // Free the indices array
 }
 
 void neural_network_evaluate(NeuralNetwork *nn, float *test_images, float *test_labels, int num_test_samples) {
