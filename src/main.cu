@@ -55,13 +55,13 @@ int main() {
     }
 
     // Define network architecture
-    int num_layers = 3; // Input layer, hidden layer, output layer
-    int layer_sizes[] = { image_size, 128, 10 };
-    ActivationType activations[] = {ACTIVATION_RELU, ACTIVATION_SIGMOID }; // ACTIVATION_NONE for input layer
+    int num_layers = 4; // Input layer, hidden layer, output layer
+    int layer_sizes[] = { image_size, 128, 128,  10 };
+    ActivationType activations[] = {ACTIVATION_RELU, ACTIVATION_RELU, ACTIVATION_SIGMOID }; // ACTIVATION_NONE for input layer
 
     // Training parameters
     int batch_size = 64;
-    int num_epochs = 20;
+    int num_epochs = 100;
     float learning_rate = 0.01f;
 
     // Initialize Neural Network

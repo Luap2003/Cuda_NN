@@ -72,6 +72,9 @@ void neural_network_train(NeuralNetwork *nn, float *train_images, float *train_l
     // Seed the random number generator
     srand(time(NULL));
 
+    // Start overall training timer
+    clock_t training_start_time = clock();
+
     for (int epoch = 0; epoch < nn->num_epochs; ++epoch) {
         // Shuffle the indices array
         for (int i = num_train_samples - 1; i > 0; --i) {
@@ -81,7 +84,7 @@ void neural_network_train(NeuralNetwork *nn, float *train_images, float *train_l
             indices[j] = temp;
         }
 
-        clock_t start_time = clock();
+        clock_t epoch_start_time = clock();
 
         float total_loss = 0.0f;
         int total_samples = 0;
@@ -191,11 +194,14 @@ void neural_network_train(NeuralNetwork *nn, float *train_images, float *train_l
         float accuracy = (float)correct_predictions / total_samples * 100.0f;
 
         // Calculate time taken for the epoch
-        clock_t end_time = clock();
-        float epoch_time = (float)(end_time - start_time) / CLOCKS_PER_SEC;
+        clock_t epoch_end_time = clock();
+        float epoch_time = (float)(epoch_end_time - epoch_start_time) / CLOCKS_PER_SEC;
+
+        // Calculate batches per second
+        float batches_per_second = num_batches / epoch_time;
 
         // Display the epoch progress
-        display_epoch_progress(epoch + 1, nn->num_epochs, average_loss, accuracy, epoch_time);
+        display_epoch_progress(epoch + 1, nn->num_epochs, average_loss, accuracy, epoch_time, batches_per_second);
     }
     printf("\n");
 
