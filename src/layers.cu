@@ -2,369 +2,310 @@
 #include "../include/layers.h"
 #include "../include/activations.h"
 #include "../include/lossFunction.h"
+#include <cstdio>
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h> 
+#include <curand.h>
+#include <curand_kernel.h>
+#include <ctime>
 
-Layer* create_dense_layer(int input_size, int output_size, ActivationType activation) {
-    Layer *layer = (Layer*)malloc(sizeof(Layer));
+// Macro to check CUDA errors
+#define cudaCheckError() { \
+    cudaError_t e = cudaGetLastError(); \
+    if (e != cudaSuccess) { \
+        printf("CUDA error %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(e)); \
+        exit(EXIT_FAILURE); \
+    } \
+}
 
-    // Set layer properties
-    layer->type = strdup("dense");  // Duplicate string to avoid pointer issues
-    layer->activation = activation;
-    layer->input_size = input_size;
-    layer->output_size = output_size;
-
-    // Allocate host memory for weights and biases
-    layer->weights = (float*)malloc(input_size * output_size * sizeof(float));
-    layer->biases = (float*)malloc(output_size * sizeof(float));
-
-    // Xavier Initialization
-    float limit = sqrtf(6.0f / (input_size + output_size));
-    for (int i = 0; i < input_size * output_size; ++i) {
-        layer->weights[i] = ((float)rand() / RAND_MAX) * 2 * limit - limit;
+// Function to initialize weights with small random values
+__global__ void init_weights_kernel(float *w, int size, unsigned int seed) {
+    int idx = threadIdx.x + blockDim.x * blockIdx.x;
+    if (idx < size) {
+        curandState state;
+        curand_init(seed, idx, 0, &state);
+        w[idx] = curand_normal(&state) * 0.01f;
     }
-    for (int i = 0; i < output_size; ++i) {
-        layer->biases[i] = 0.0f;  // Initialize biases to zero
-    }
+}
+
+void layer_init(Layer *layer, int m, int n_in, int n_out, ActivationType aktfunc) {
+    layer->m = m;
+    layer->n_in = n_in;
+    layer->n_out = n_out;
+    layer->aktfunc = aktfunc;
+
+    size_t w_size = n_out * n_in * sizeof(float);
+    size_t b_size = n_out * sizeof(float);
+    size_t A_size = n_out * m * sizeof(float);
+    size_t Z_size = n_out * m * sizeof(float);
 
     // Allocate device memory
-    cudaMalloc((void**)&(layer->d_weights), input_size * output_size * sizeof(float));
-    cudaMalloc((void**)&(layer->d_biases), output_size * sizeof(float));
-    cudaMalloc((void**)&(layer->d_weights_grad), input_size * output_size * sizeof(float));
-    cudaMalloc((void**)&(layer->d_biases_grad), output_size * sizeof(float));
-    cudaMalloc((void**)&(layer->d_output), output_size * sizeof(float)); // Adjust size based on batch
-    cudaMalloc((void**)&(layer->d_z), output_size * sizeof(float));      // Adjust size based on batch
+    cudaMalloc((void**)&layer->w_d, w_size);
+    cudaMalloc((void**)&layer->b_d, b_size);
+    cudaMalloc((void**)&layer->A_d, A_size);
+    cudaMalloc((void**)&layer->Z_d, Z_size);
+    cudaMalloc((void**)&layer->dZ_d, Z_size);
+    cudaMalloc((void**)&layer->dW_d, w_size);
+    cudaMalloc((void**)&layer->db_d, b_size);
+    cudaCheckError();
 
-    // Initialize gradients to zero
-    cudaMemset(layer->d_weights_grad, 0, input_size * output_size * sizeof(float));
-    cudaMemset(layer->d_biases_grad, 0, output_size * sizeof(float));
+    // Initialize weights
+    int threads = 256;
+    int blocks = (n_out * n_in + threads - 1) / threads;
+    init_weights_kernel<<<blocks, threads>>>(layer->w_d, n_out * n_in, time(NULL));
+    cudaCheckError();
 
-    // Copy weights and biases to device
-    cudaMemcpy(layer->d_weights, layer->weights, input_size * output_size * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(layer->d_biases, layer->biases, output_size * sizeof(float), cudaMemcpyHostToDevice);
-
-    return layer;
+    // Initialize biases to zero
+    cudaMemset(layer->b_d, 0, b_size);
+    cudaCheckError();
 }
 
-__global__ void add_bias(float *d_output, float *d_biases, int batch_size, int output_size) {
+// Kernel to add bias
+__global__ void add_bias_kernel(float *Z, const float *b, int n_out, int m) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int total_elements = batch_size * output_size;
-    if (idx < total_elements) {
-        int bias_idx = idx % output_size;
-        d_output[idx] += d_biases[bias_idx];
+    if (idx < n_out * m) {
+        int row = idx % n_out;
+        Z[idx] += b[row];
     }
 }
 
-void forward_layer(Layer *layer, float *d_input, float *d_output, int batch_size) {
-
-    if (layer->d_input == NULL || layer->batch_size != batch_size) {
-        if (layer->d_input != NULL) {
-            cudaFree(layer->d_input);
+// Kernel for activation function
+__global__ void activation_forward_kernel(const float *Z, float *A, int size, ActivationType aktfunc) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        float z = Z[idx];
+        switch (aktfunc) {
+            case ACTIVATION_RELU:
+                A[idx] = fmaxf(0.0f, z);
+                break;
+            case ACTIVATION_SIGMOID:
+                A[idx] = 1.0f / (1.0f + expf(-z));
+                break;
+            default:
+                A[idx] = z; // Linear activation
+                break;
         }
-        cudaMalloc(&(layer->d_input), batch_size * layer->input_size * sizeof(float));
-        layer->batch_size = batch_size;
     }
+}
 
-    // Copy d_input to layer->d_input
-    cudaMemcpy(layer->d_input, d_input, batch_size * layer->input_size * sizeof(float), cudaMemcpyDeviceToDevice);
-
-
-    cublasHandle_t handle;
-    cublasCreate(&handle);
+void layer_forward(Layer *layer, float *A_prev_d, cublasHandle_t handle) {
 
     float alpha = 1.0f;
     float beta = 0.0f;
 
-    // Compute z = W * a +b
-    // Perform matrix multiplication: d_output = alpha * d_input * d_weights^T + beta * d_output
-    cublasStatus_t stat = cublasSgemm(handle,CUBLAS_OP_T, CUBLAS_OP_N, 
-                layer->output_size,
-                batch_size,
-                layer->input_size,
-                &alpha,
-                layer->d_weights, layer->input_size,      // d_weights^T has dimensions [n x k]
-                d_input, layer->input_size,               // d_input has dimensions [m x k]
-                &beta,
-                d_output, layer->output_size);            // d_output has dimensions [n x m]
-
-    if (stat != CUBLAS_STATUS_SUCCESS) {
-        printf("cublasSgemm failed\n");
-    }
-
-    int threads_per_block = THREADS_PER_BLOCK;
-    int total_elements = batch_size * layer->output_size;
-    int num_blocks = (total_elements + threads_per_block - 1) / threads_per_block;
-
-    add_bias<<<num_blocks, threads_per_block>>>(d_output, layer->d_biases, batch_size, layer->output_size);
-    cudaDeviceSynchronize();
-
-    if (layer->activation == ACTIVATION_SIGMOID) {
-        // Call sigmoid activation function
-        sigmoid_kernel<<<num_blocks, threads_per_block>>>(d_output, d_output, total_elements);
-    } else if (layer->activation == ACTIVATION_RELU) {
-        // Call relu activation function
-        relu_kernel<<<num_blocks, threads_per_block>>>(d_output, d_output, total_elements);
-    } else if (layer->activation == ACTIVATION_LINEAR) {
-        // Call linear activation function
-        linear_kernel<<<num_blocks, threads_per_block>>>(d_output, d_output, total_elements);
-    } else { 
-        // Add other activation functions here using else if
-        printf("Activation function not implemented\n");
-    }
-    cudaDeviceSynchronize();
-    cublasDestroy(handle);
-
-}
-
-__device__ float compute_activation_derivative(float z, ActivationType activation) {
-    float sigma_prime = 1.0f; // Default for linear activation
-    if (activation == ACTIVATION_SIGMOID) {
-        float sigmoid = 1.0f / (1.0f + expf(-z));
-        sigma_prime = sigmoid * (1.0f - sigmoid);
-    } else if (activation == ACTIVATION_RELU) {
-        sigma_prime = z > 0 ? 1.0f : 0.0f;
-    }
-    // Add other activations if necessary
-    return sigma_prime;
-}
-
-__global__ void compute_output_delta(float *d_output_delta, float *d_output, float *d_z, float *d_labels, int size, ActivationType activation, LossFunction loss_function) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < size) {
-        float delta = d_output[idx] - d_labels[idx]; // (a^L - y)
-        float sigma_prime = compute_activation_derivative(d_z[idx], activation);
-
-        if (loss_function == LOSS_MSE) {
-            // δ^L = (a^L - y) * σ'(z^L)
-            d_output_delta[idx] = delta * sigma_prime;
-        }
-        else if (loss_function == LOSS_CROSSENTROPY && activation == ACTIVATION_SIGMOID) {
-            // δ^L = (a^L - y)
-            d_output_delta[idx] = delta;
-        }
-        else {
-            // Handle other combinations or raise an error
-            // For example, cross-entropy with softmax, etc.
-            // Here, we'll default to multiplying by sigma_prime
-            d_output_delta[idx] = delta * sigma_prime;
-        }
-    }
-}
-
-__global__ void set_ones(float *d_ones, int size) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < size) {
-        d_ones[idx] = 1.0f;
-    }
-}
-
-void backward_output_layer(Layer *layer, float *d_labels, int batch_size){
-    int size = batch_size * layer->output_size;
-    int threads = THREADS_PER_BLOCK;
-    int blocks = (size + threads - 1) / threads;
-
-    // Launch kernel to compute δ^L
-    compute_output_delta<<<blocks, threads>>>(layer->d_output_delta, layer->d_output, layer->d_z, d_labels, size, layer->activation, layer->loss_function);
-    cudaDeviceSynchronize();
-
-     cublasHandle_t handle;
-    cublasCreate(&handle);
-
-    float alpha = 1.0f;
-    float beta = 0.0f;
-
-    // Compute d_weights_grad = (a^{L-1})^T * δ^L
-    cublasStatus_t stat = cublasSgemm(handle,
-                                      CUBLAS_OP_T, CUBLAS_OP_N,
-                                      layer->input_size,    // M
-                                      layer->output_size,   // N
-                                      batch_size,           // K
-                                      &alpha,
-                                      layer->d_input,       // A
-                                      batch_size,           // lda
-                                      layer->d_output_delta,// B
-                                      batch_size,           // ldb
-                                      &beta,
-                                      layer->d_weights_grad,// C
-                                      layer->input_size);   // ldc
-
-    if (stat != CUBLAS_STATUS_SUCCESS) {
-        printf("cublasSgemm failed in backward_output_layer\n");
-    }
-
-    // Compute d_biases_grad = sum over batch of δ^L
-    // Allocate and initialize d_ones
-    float *d_ones;
-    cudaMalloc(&d_ones, batch_size * sizeof(float));
-    int num_blocks = (batch_size + threads - 1) / threads;
-    set_ones<<<num_blocks, threads>>>(d_ones, batch_size);
-    cudaDeviceSynchronize();
-
-    // Compute d_biases_grad = δ^L^T * d_ones
-    cublasStatus_t stat2 = cublasSgemv(handle,
-                                       CUBLAS_OP_T,
-                                       batch_size,              // m
-                                       layer->output_size,      // n
-                                       &alpha,
-                                       layer->d_output_delta,   // A
-                                       batch_size,              // lda
-                                       d_ones,                  // x
-                                       1,                       // incx
-                                       &beta,
-                                       layer->d_biases_grad,    // y
-                                       1);                      // incy
-
-    if (stat2 != CUBLAS_STATUS_SUCCESS) {
-        printf("cublasSgemv failed in backward_output_layer\n");
-    }
-
-    // Clean up
-    cudaFree(d_ones);
-    cublasDestroy(handle);
-
+    // Compute Z_d = w_d * A_prev_d
+    cublasStatus_t status = cublasSgemm(
+        handle,
+        CUBLAS_OP_N,       // Transpose w_d
+        CUBLAS_OP_N,       // Transpose A_prev_d
+        layer->n_out,                 // Number of rows in Z_d
+        layer->m,                 // Number of columns in Z_d
+        layer->n_in,                 // Shared dimension
+        &alpha,
+        layer->w_d,        // Pointer to w_d
+        layer->n_out,                 // Leading dimension of w_d
+        A_prev_d,          // Pointer to A_prev_d
+        layer->n_in,                 // Leading dimension of A_prev_d
+        &beta,
+        layer->Z_d,        // Pointer to Z_d
+        layer->n_out                  // Leading dimension of Z_d
+    );
     
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        printf("cuBLAS error in cublasSgemm: %d\n", status);
+        // Handle the error or exit
+        exit(EXIT_FAILURE);
+    }
+        
+    int threads = 256;
+    int total_elements = layer->n_out * layer->m;
+    int blocks = (total_elements + threads - 1) / threads;
+
+    add_bias_kernel<<<blocks, threads>>>(layer->Z_d, layer->b_d, layer->n_out, layer->m);
+    cudaCheckError();
+    
+    // Apply activation function
+    threads = 256;
+    blocks = (total_elements + threads - 1) / threads;
+    activation_forward_kernel<<<blocks, threads>>>(layer->Z_d, layer->A_d, total_elements, layer->aktfunc);
+    
+    cudaCheckError();
 }
 
-__global__ void compute_hidden_delta(float *d_current_delta, float *d_z, ActivationType activation, int size) {
+// Kernel to compute dZ = A - Y
+__global__ void compute_dZ(float *dZ, const float *A, const float *Y, int size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < size) {
-        // Compute σ'(z^l)
-        float sigma_prime;
-        if (activation == ACTIVATION_SIGMOID) {
-            float sigmoid = 1.0f / (1.0f + expf(-d_z[idx]));
-            sigma_prime = sigmoid * (1.0f - sigmoid);
-        } else if (activation == ACTIVATION_RELU) {
-            sigma_prime = d_z[idx] > 0 ? 1.0f : 0.0f;
-        } else if (activation == ACTIVATION_LINEAR) {
-            sigma_prime = 1.0f;
-        } else {
-            // Add other activation derivatives as needed
-            sigma_prime = 1.0f; // Default to linear if unknown
-        }
-
-        // Compute δ^l = (W^{l+1}^T * δ^{l+1}) * σ'(z^l)
-        d_current_delta[idx] *= sigma_prime;
+        dZ[idx] = A[idx] - Y[idx];
     }
 }
 
-__global__ void multiply_by_sigma_prime(float *d_input_grad, float *d_z, int size, ActivationType activation) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < size) {
-        float sigma_prime;
-        if (activation == ACTIVATION_SIGMOID) {
-            float sigmoid = 1.0f / (1.0f + expf(-d_z[idx]));
-            sigma_prime = sigmoid * (1.0f - sigmoid);
-        } else if (activation == ACTIVATION_RELU) {
-            sigma_prime = d_z[idx] > 0 ? 1.0f : 0.0f;
-        } else if (activation == ACTIVATION_LINEAR) {
-            sigma_prime = 1.0f;
-        } else {
-            sigma_prime = 1.0f; // Default to linear if unknown
+// Kernel to compute db = (1/m) * sum(dZ) (column-wise sum)
+__global__ void compute_db(float *db, const float *dZ, int n_out, int m) {
+    int row = threadIdx.x + blockIdx.x * blockDim.x;
+    if (row < n_out) {
+        float sum = 0.0f;
+        for (int col = 0; col < m; ++col) {
+            sum += dZ[row + col * n_out];
         }
-        d_input_grad[idx] *= sigma_prime;
+        db[row] = sum / m;
     }
 }
 
-void backward_layer(Layer *current_layer, Layer *next_layer, float *d_output_delta, float *d_input_grad, int batch_size) {
-    // current_layer: the layer we are computing gradients for
-    // next_layer: the layer after current_layer
-    // d_output_delta: gradient from the next layer (δ^{l+1})
-    // d_input_grad: output gradient (δ^{l}) to be computed
-    // batch_size: number of samples in the batch
+// Helper function to compute dW and db
+void compute_gradients(Layer *layer, float *A_prev_d, cublasHandle_t handle) {
+    int n_out = layer->n_out;
+    int n_in = layer->n_in;
+    int m = layer->m;
 
-    cublasHandle_t handle;
-    cublasCreate(&handle);
+    float alpha = 1.0f / m;
+    float beta = 0.0f;
+
+    // Compute dW = (1/m) * dZ * A_prev^T
+    cublasStatus_t status = cublasSgemm(
+        handle,
+        CUBLAS_OP_N,       // dZ
+        CUBLAS_OP_T,       // A_prev_d
+        n_out,             // Number of rows in dZ
+        n_in,              // Number of columns in A_prev^T
+        m,                 // Shared dimension
+        &alpha,
+        layer->dZ_d,       // Pointer to dZ
+        n_out,             // Leading dimension of dZ
+        A_prev_d,          // Pointer to A_prev_d
+        n_in,              // Leading dimension of A_prev_d
+        &beta,
+        layer->dW_d,       // Pointer to dW
+        n_out              // Leading dimension of dW
+    );
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        printf("cuBLAS SGEMM error: %d\n", status);
+        return;
+    }
+
+    // Compute db = (1/m) * sum(dZ) (column-wise sum)
+    int block_size = 256;
+    int grid_size = (n_out + block_size - 1) / block_size;
+    compute_db<<<grid_size, block_size>>>(layer->db_d, layer->dZ_d, n_out, m);
+    cudaDeviceSynchronize();
+}
+
+// Kernel for activation function derivative
+__global__ void deriv_akt_kernel(const float *Z, float *dZ, int size, ActivationType aktfunc) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        float z = Z[idx];
+        switch (aktfunc) {
+            case ACTIVATION_RELU:
+                dZ[idx] = dZ[idx] * (z > 0);
+                break;
+            default:
+                dZ[idx] = z; // Linear activation
+                break;
+        }
+    }
+}
+
+void backward_output_layer(Layer *layer, float *Y, float *A_prev_d, cublasHandle_t handle) {
+    int dZ_size = layer->n_out * layer->m;
+    int block_size = 256;
+    int grid_size = (dZ_size + block_size - 1) / block_size;
+
+    // Compute dZ = A - Y
+    compute_dZ<<<grid_size, block_size>>>(layer->dZ_d, layer->A_d, Y, dZ_size);
+    cudaDeviceSynchronize();
+
+    // Compute dW and db
+    compute_gradients(layer, A_prev_d, handle);
+}
+
+void backward_layer(Layer *layer, float *W_next_d, float *dZ_next_d, float *A_prev_d, int n_out_next, cublasHandle_t handle) {
+    int m = layer->n_out;
+    int n = layer->m;
+    int k = n_out_next;
 
     float alpha = 1.0f;
     float beta = 0.0f;
 
-    // Dimensions:
-    // next_layer->output_size: n
-    // next_layer->input_size: k (should be equal to current_layer->output_size)
-    // batch_size: m
-
-    // We assume that next_layer->d_weights has dimensions [k x n]
-    // d_output_delta has dimensions [m x n]
-    // We want to compute d_input_grad = d_output_delta * W^{l+1}
-
-    // However, cuBLAS uses column-major order, so we need to adjust the parameters accordingly.
-
-    // Compute: d_input_grad = d_output_delta * W^{l+1}
-    // In cuBLAS terms: C = alpha * A * B + beta * C
-    // A: [n x m] (transpose of d_output_delta which is [m x n])
-    // B: [n x k] (W^{l+1} which is [k x n] in row-major, so no transpose)
-    // C: [m x k] (d_input_grad)
-
-    // To match dimensions, we'll use CUBLAS_OP_T on d_output_delta
-    // Result will be [n x k] which needs to be transposed to [k x n]
-
-    // But to compute [m x k], we set:
-    // A: d_output_delta (m x n)
-    // B: next_layer->d_weights (n x k)
-    // C: d_input_grad (m x k)
-
-    // Therefore, no transposition is needed if we treat data as row-major.
-
-    // However, cuBLAS expects column-major, so effectively:
-    // A (n x m) = d_output_delta^T
-    // B (k x n) = W^{l+1}^T
-    // C (k x m) = d_input_grad^T
-
-    // Therefore, we set the operation as:
-    // C = W^{l+1}^T * d_output_delta^T
-    // Which in cuBLAS is:
-    // CUBLAS_OP_N, CUBLAS_OP_N
-
-    // So, setting up the SGEMM parameters:
-    cublasStatus_t stat = cublasSgemm(handle,
-                                     CUBLAS_OP_N, CUBLAS_OP_N,
-                                     current_layer->output_size, // m: k
-                                     batch_size,                 // n: m
-                                     next_layer->output_size,    // k: n
-                                     &alpha,
-                                     next_layer->d_weights,      // A: [k x n]
-                                     current_layer->output_size, // lda: leading dimension of A
-                                     d_output_delta,             // B: [n x m]
-                                     next_layer->output_size,    // ldb: leading dimension of B
-                                     &beta,
-                                     d_input_grad,               // C: [k x m]
-                                     current_layer->output_size  // ldc: leading dimension of C
-                                     );
-
-    if (stat != CUBLAS_STATUS_SUCCESS) {
-        printf("cublasSgemm failed in backward_layer\n");
+    // Compute dZ = W_next^T * dZ_next
+    cublasStatus_t status = cublasSgemm(
+        handle,
+        CUBLAS_OP_T,      // W_next^T
+        CUBLAS_OP_N,      // dZ_next
+        m,                // Number of rows in W_next^T
+        n,                // Number of columns in dZ_next
+        k,                // Shared dimension
+        &alpha,
+        W_next_d,         // Pointer to W_next_d
+        k,                // Leading dimension of W_next_d
+        dZ_next_d,        // Pointer to dZ_next_d
+        k,                // Leading dimension of dZ_next_d
+        &beta,
+        layer->dZ_d,      // Pointer to dZ
+        m                 // Leading dimension of dZ
+    );
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        printf("cuBLAS SGEMM error: %d\n", status);
+        return;
     }
 
-    // Now, d_input_grad has dimensions [k x m] in column-major
-    // We need to transpose it to [m x k] to match the expected row-major format
-    // Alternatively, we can treat it as is for further processing
-
-    // Apply the activation derivative: δ^{l} = d_input_grad^T * σ'(z^l)
-    int size = current_layer->output_size * batch_size;
-    int threads_per_block = THREADS_PER_BLOCK;
-    int num_blocks = (size + threads_per_block - 1) / threads_per_block;
-
-    multiply_by_sigma_prime<<<num_blocks, threads_per_block>>>(d_input_grad, current_layer->d_z, size, current_layer->activation);
+    // Apply activation function derivative
+    int total_elements = m * n;
+    int threads = 256;
+    int blocks = (total_elements + threads - 1) / threads;
+    deriv_akt_kernel<<<blocks, threads>>>(layer->Z_d, layer->dZ_d, total_elements, ACTIVATION_RELU);
     cudaDeviceSynchronize();
 
-    cublasDestroy(handle);
+    // Compute dW and db
+    compute_gradients(layer, A_prev_d, handle);
 }
 
+// Kernel to update weights
+__global__ void update_weights(float *w, const float *dW, float learning_rate, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        w[idx] -= learning_rate * dW[idx];
+    }
+}
+
+// Kernel to update biases
+__global__ void update_biases(float *b, const float *db, float learning_rate, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        b[idx] -= learning_rate * db[idx];
+    }
+}
+
+
+void update(Layer *layer, float learning_rate) {
+    int block_size = 256;
+
+    // Update weights
+    int w_size = layer->n_out * layer->n_in;  // Total size of weights
+    int grid_size_w = (w_size + block_size - 1) / block_size;
+    update_weights<<<grid_size_w, block_size>>>(layer->w_d, layer->dW_d, learning_rate, w_size);
+    cudaDeviceSynchronize();
+
+    // Update biases
+    int b_size = layer->n_out;  // Total size of biases
+    int grid_size_b = (b_size + block_size - 1) / block_size;
+    update_biases<<<grid_size_b, block_size>>>(layer->b_d, layer->db_d, learning_rate, b_size);
+    cudaDeviceSynchronize();
+}
 
 void free_layer(Layer *layer) {
-    // Free device memory
-    cudaFree(layer->d_weights);
-    cudaFree(layer->d_biases);
-
-    // Free host memory
-    free(layer->weights);
-    free(layer->biases);
-    free(layer);
+    cudaFree(layer->w_d);
+    cudaFree(layer->b_d);
+    cudaFree(layer->A_d);
+    cudaFree(layer->Z_d);
+    cudaFree(layer->dZ_d);
+    cudaFree(layer->dW_d);
+    cudaFree(layer->db_d);
 }
-
+/*
 void print_layer(Layer *layer) {
     printf("Type: %s\n", layer->type);
     printf("Input Size: %d\n", layer->input_size);
@@ -398,3 +339,5 @@ void print_layer(Layer *layer) {
     }
     printf("\n");
 }
+
+*/

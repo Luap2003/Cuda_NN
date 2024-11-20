@@ -1,26 +1,48 @@
-// neural_net.h
-#ifndef NEURAL_NET_H
-#define NEURAL_NET_H
+// NeuralNetwork.h
+#ifndef NEURAL_NETWORK_H
+#define NEURAL_NETWORK_H
 
 #include "layers.h"
-#include "optimizer.h"
+#include "activations.h"
 #include "lossFunction.h"
+#include <cublas_v2.h>
 
+/**
+ * @brief Neural Network structure containing layers and training parameters.
+ */
 typedef struct {
-    Layer **layers;
-    int num_layers;
-    Optimizer optimizer;
-    LossFunction *loss_function;
+    Layer *layers;               // Array of layers
+    int num_layers;              // Total number of layers (including input layer)
+    int *layer_sizes;            // Sizes of each layer
+    ActivationType *activations; // Activation functions for each layer
+
+    // Training parameters
+    int num_epochs;
+    int batch_size;
+    float learning_rate;
+
+    // cuBLAS handle
+    cublasHandle_t handle;
 } NeuralNetwork;
 
-NeuralNetwork* create_neural_net(int num_layers);
-void add_layer_to_neural_net(NeuralNetwork *network, Layer *layer, int index);
-void compile_neural_Net(NeuralNetwork *model, const char *optimizer_name, const char *loss_name, const char *metric_name);
-void backpropagation(NeuralNetwork *network, float *d_input, float *d_labels, int batch_size, float learning_rate);
-void update_parameters(Layer *layer, float learning_rate);
-void fit_neural_net(NeuralNetwork *network, float *x_train, float *y_train, int num_samples, int epochs, int batch_size);
-void evaluate_neural_net(NeuralNetwork *model, float *x_test, float *y_test, int num_samples, float *loss, float *accuracy);
-void predict_neural_net(NeuralNetwork *network, float *x_input, float *y_output, int num_samples);
-void free_neural_net(NeuralNetwork *network);
+/**
+ * @brief Initializes the neural network with given architecture and training parameters.
+ */
+void neural_network_init(NeuralNetwork *nn, int num_layers, int *layer_sizes, ActivationType *activations, int batch_size, int num_epochs, float learning_rate);
 
-#endif // NEURAL_NET_H
+/**
+ * @brief Trains the neural network using the provided training data.
+ */
+void neural_network_train(NeuralNetwork *nn, float *train_images, float *train_labels, int num_train_samples);
+
+/**
+ * @brief Evaluates the neural network on the test data.
+ */
+void neural_network_evaluate(NeuralNetwork *nn, float *test_images, float *test_labels, int num_test_samples);
+
+/**
+ * @brief Frees the resources allocated for the neural network.
+ */
+void free_neural_network(NeuralNetwork *nn);
+
+#endif // NEURAL_NETWORK_H
