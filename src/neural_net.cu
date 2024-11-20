@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void neural_network_init(NeuralNetwork *nn, int num_layers, int *layer_sizes, ActivationType *activations, int batch_size, int num_epochs, float learning_rate) {
+void neural_network_init(NeuralNetwork *nn, int num_layers, int *layer_sizes, ActivationType *activations, int batch_size, int num_epochs, float learning_rate, float decay_rate) {
     nn->num_layers = num_layers;
 
     // Allocate memory for layer sizes and activations
@@ -26,6 +26,8 @@ void neural_network_init(NeuralNetwork *nn, int num_layers, int *layer_sizes, Ac
     nn->batch_size = batch_size;
     nn->num_epochs = num_epochs;
     nn->learning_rate = learning_rate;
+    nn->initial_learning_rate = learning_rate;
+    nn->decay_rate = decay_rate;
 
     // Initialize cuBLAS handle
     cublasStatus_t status = cublasCreate(&nn->handle);
@@ -85,7 +87,7 @@ void neural_network_train(NeuralNetwork *nn, float *train_images, float *train_l
         }
 
         clock_t epoch_start_time = clock();
-
+        nn->learning_rate = nn->initial_learning_rate * expf(-nn->decay_rate * epoch);
         float total_loss = 0.0f;
         int total_samples = 0;
         int correct_predictions = 0;

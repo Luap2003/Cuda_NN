@@ -87,7 +87,7 @@ def main():
     xp = cp  # Select CuPy for GPU acceleration or np for CPU
     dtype = cp.float32 if xp == cp else np.float32  # Choose floating-point precision
 
-    epochs = 20
+    epochs = 200
     batch_size = 64
     learning_rate = 0.1
 
@@ -96,10 +96,11 @@ def main():
         load_and_preprocess_data, xp, dtype
     )
 
-    n_input, n_hidden, n_output = 784, 64, 10
+    n_input, n_hidden_1, n_hidden_2, n_output = 784, 128, 128, 10
     NN = NeuralNetwork(m_train, epochs, xp=xp, dtype=dtype)
-    NN.add_layer(n_input, n_hidden, lambda Z: relu(Z, xp))
-    NN.add_layer(n_hidden, n_output, lambda Z: softmax(Z, xp))
+    NN.add_layer(n_input, n_hidden_1, lambda Z: relu(Z, xp))
+    NN.add_layer(n_hidden_1, n_hidden_2, lambda Z: relu(Z, xp))
+    NN.add_layer(n_hidden_2, n_output, lambda Z: softmax(Z, xp))
 
     # Train and evaluate the neural network
     accuracy = benchmark(

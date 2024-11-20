@@ -20,6 +20,8 @@ typedef struct {
     int num_epochs;
     int batch_size;
     float learning_rate;
+    float initial_learning_rate;
+    float decay_rate;
 
     // cuBLAS handle
     cublasHandle_t handle;
@@ -28,7 +30,7 @@ typedef struct {
 /**
  * @brief Initializes the neural network with given architecture and training parameters.
  */
-void neural_network_init(NeuralNetwork *nn, int num_layers, int *layer_sizes, ActivationType *activations, int batch_size, int num_epochs, float learning_rate);
+void neural_network_init(NeuralNetwork *nn, int num_layers, int *layer_sizes, ActivationType *activations, int batch_size, int num_epochs, float learning_rate, float decay_rate);
 
 /**
  * @brief Trains the neural network using the provided training data.

@@ -63,10 +63,11 @@ int main() {
     int batch_size = 64;
     int num_epochs = 100;
     float learning_rate = 0.01f;
+    float decay_rate = 0.000001f;
 
     // Initialize Neural Network
     NeuralNetwork nn;
-    neural_network_init(&nn, num_layers, layer_sizes, activations, batch_size, num_epochs, learning_rate);
+    neural_network_init(&nn, num_layers, layer_sizes, activations, batch_size, num_epochs, learning_rate, decay_rate);
 
     // Train Neural Network
     neural_network_train(&nn, train_images, train_labels, num_train_images);
