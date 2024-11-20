@@ -1,5 +1,8 @@
 // NeuralNetwork.c
 #include "../include/neural_net.h"
+#include "../include/utilities.h"
+#include <cstdio>
+#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -61,7 +64,8 @@ void neural_network_train(NeuralNetwork *nn, float *train_images, float *train_l
     cudaMalloc((void**)&Y_train_d, label_batch_size);
 
     for (int epoch = 0; epoch < nn->num_epochs; ++epoch) {
-        printf("Epoch %d/%d\n", epoch + 1, nn->num_epochs);
+        //printf("Epoch %d/%d\n", epoch + 1, nn->num_epochs);
+        clock_t start_time = clock();
 
         float total_loss = 0.0f;
         int total_samples = 0;
@@ -145,8 +149,15 @@ void neural_network_train(NeuralNetwork *nn, float *train_images, float *train_l
 
         float average_loss = total_loss / total_samples;
         float accuracy = (float)correct_predictions / total_samples * 100.0f;
-        printf("Loss after epoch %d: %.4f, Accuracy: %.2f%%\n", epoch + 1, average_loss, accuracy);
+
+        // Calculate time taken for the epoch
+        clock_t end_time = clock();
+        float epoch_time = (float)(end_time - start_time) / CLOCKS_PER_SEC;
+
+        // Display the epoch progress
+        display_epoch_progress(epoch + 1, nn->num_epochs, average_loss, accuracy, epoch_time);
     }
+    printf("\n");
 
     cudaFree(X_train_d);
     cudaFree(Y_train_d);

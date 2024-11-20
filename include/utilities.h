@@ -11,5 +11,6 @@
         exit(EXIT_FAILURE);                                          \
     }                                                                \
 }
-
+void display_progress_bar(int current, int total, int bar_width);
+void display_epoch_progress(int current_epoch, int total_epochs, float loss, float accuracy, float epoch_time);
 #endif // UTILITIES_H
