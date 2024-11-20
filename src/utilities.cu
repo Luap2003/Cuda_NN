@@ -20,7 +20,7 @@ void display_progress_bar(int current, int total, int bar_width) {
 }
 
 void display_epoch_progress(int current_epoch, int total_epochs, float loss, float accuracy, float epoch_time) {
-    int bar_width = 50;
+    int bar_width = 100;
     float progress = (float)current_epoch / total_epochs;
     int pos = (int)(bar_width * progress);
 

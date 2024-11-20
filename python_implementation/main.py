@@ -1,8 +1,10 @@
+# main.py
 import numpy as np
 from tensorflow.keras.datasets import mnist
 import matplotlib.pyplot as plt
 from layer import Layer
 from nn import NeuralNetwork
+
 def main():
     # Load the MNIST dataset
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -23,13 +25,14 @@ def main():
     y_test_encoded[y_test, np.arange(m_test)] = 1
 
     # Set hyperparameters
-    num_epochs = 1000
-    learning_rate = 0.3
+    num_epochs = 10  # Reduced epochs for demonstration
+    learning_rate = 0.1
+    batch_size = 64  # Batch size for mini-batch gradient descent
 
     # Initialize layers
     n_input = 784   # Input layer size
-    n_1 = 64   
-    n_2 = 10   
+    n_hidden = 64   # Hidden layer size
+    n_output = 10   # Output layer size
 
     # Activation functions
     def relu(Z):
@@ -40,13 +43,16 @@ def main():
         return expZ / np.sum(expZ, axis=0, keepdims=True)
 
     NN = NeuralNetwork(m_train, num_epochs)
-    NN.add_layer(n_input, 64, relu)
-    NN.add_layer(64, n_2, softmax)
+    NN.add_layer(n_input, n_hidden, relu)
+    NN.add_layer(n_hidden, n_output, softmax)
 
-    NN.train(learning_rate, x_train, y_train_encoded)
+    # Train the neural network with mini-batch gradient descent
+    NN.train(learning_rate, x_train, y_train_encoded, batch_size)
 
+    # Test the neural network
     NN.test(m_test, x_test, y_test_encoded)
-# Visualization
+
+    # Visualization
     # Select 100 random test samples
     num_images = 100
     indices = np.random.choice(m_test, num_images, replace=False)

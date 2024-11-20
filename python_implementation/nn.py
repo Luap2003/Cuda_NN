@@ -1,5 +1,7 @@
+# nn.py
 from layer import Layer
 import numpy as np
+
 class NeuralNetwork:
     
     def __init__(self, m, num_epochs):
@@ -21,8 +23,8 @@ class NeuralNetwork:
             activations.append(input)
         
         loss = -np.sum(y_train_encoded * np.log(self.layers[-1].A + 1e-8)) / self.m
-        print(f"Epoch {self.epoch+1}/{self.num_epochs}, Loss: {loss:.4f}")
 
+        # Backward pass
         self.layers[-1].backword_prog_output(y_train_encoded, activations[-2])
         
         # Hidden layers
@@ -36,11 +38,39 @@ class NeuralNetwork:
         # Update weights and biases
         for layer in self.layers:
             layer.update(learning_rate)
+        
+        return loss  # Return loss to accumulate and print per epoch
     
-    def train(self, learning_rate, x_train, y_train):
+    def train(self, learning_rate, x_train, y_train, batch_size):
+        num_examples = x_train.shape[1]
         for i in range(self.num_epochs):
-            self.back_prop(x_train, y_train, learning_rate)
-            self.epoch=i
+            # Shuffle the data
+            permutation = np.random.permutation(num_examples)
+            x_train_shuffled = x_train[:, permutation]
+            y_train_shuffled = y_train[:, permutation]
+            
+            total_loss = 0
+            num_batches = 0
+            
+            # Loop over mini-batches
+            for j in range(0, num_examples, batch_size):
+                x_batch = x_train_shuffled[:, j:j+batch_size]
+                y_batch = y_train_shuffled[:, j:j+batch_size]
+                
+                # Update self.m and layers' m
+                batch_m = x_batch.shape[1]
+                self.m = batch_m
+                for layer in self.layers:
+                    layer.m = batch_m
+                
+                # Perform backpropagation on the batch
+                loss = self.back_prop(x_batch, y_batch, learning_rate)
+                total_loss += loss
+                num_batches += 1
+            
+            average_loss = total_loss / num_batches
+            print(f"Epoch {i+1}/{self.num_epochs}, Loss: {average_loss:.4f}")
+            self.epoch = i
     
     def test(self, m_test, x_test, y_test):
         # Update the number of examples
