@@ -22,12 +22,21 @@
 }
 
 // Function to initialize weights with small random values
-__global__ void init_weights_kernel(float *w, int size, unsigned int seed) {
+__global__ void init_weights_kernel(float *w, int size, int fan_in, int fan_out, unsigned int seed) {
     int idx = threadIdx.x + blockDim.x * blockIdx.x;
     if (idx < size) {
+        // Initialize CURAND
         curandState state;
         curand_init(seed, idx, 0, &state);
-        w[idx] = curand_normal(&state) * 0.01f;
+
+        // Calculate Glorot Uniform limit
+        float limit = sqrtf(6.0f / (float)(fan_in + fan_out));
+
+        // Generate a random number in [0, 1)
+        float rand_uniform = curand_uniform(&state); // [0, 1)
+
+        // Scale to [-limit, limit)
+        w[idx] = rand_uniform * 2.0f * limit - limit;
     }
 }
 
@@ -52,16 +61,18 @@ void layer_init(Layer *layer, int m, int n_in, int n_out, ActivationType aktfunc
     cudaMalloc((void**)&layer->db_d, b_size);
     cudaCheckError();
 
-    // Initialize weights
+    // Initialize weights using Glorot Uniform
     int threads = 256;
     int blocks = (n_out * n_in + threads - 1) / threads;
-    init_weights_kernel<<<blocks, threads>>>(layer->w_d, n_out * n_in, time(NULL));
+    unsigned int seed = time(NULL); // For randomness; consider using a fixed seed for reproducibility
+    init_weights_kernel<<<blocks, threads>>>(layer->w_d, n_out * n_in, n_in, n_out, seed);
     cudaCheckError();
 
     // Initialize biases to zero
     cudaMemset(layer->b_d, 0, b_size);
     cudaCheckError();
 }
+
 
 // Kernel to add bias
 __global__ void add_bias_kernel(float *Z, const float *b, int n_out, int m) {
@@ -256,7 +267,7 @@ void backward_layer(Layer *layer, float *W_next_d, float *dZ_next_d, float *A_pr
     int total_elements = m * n;
     int threads = 256;
     int blocks = (total_elements + threads - 1) / threads;
-    deriv_akt_kernel<<<blocks, threads>>>(layer->Z_d, layer->dZ_d, total_elements, ACTIVATION_RELU);
+    deriv_akt_kernel<<<blocks, threads>>>(layer->Z_d, layer->dZ_d, total_elements, layer->aktfunc);
     cudaDeviceSynchronize();
 
     // Compute dW and db

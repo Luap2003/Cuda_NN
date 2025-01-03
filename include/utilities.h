@@ -11,6 +11,11 @@
         exit(EXIT_FAILURE);                                          \
     }                                                                \
 }
+
 void display_progress_bar(int current, int total, int bar_width);
 void display_epoch_progress(int current_epoch, int total_epochs, float loss, float accuracy, float epoch_time, float batches_per_second);
+void generate_log_filename(char *log_filename, size_t size, int batch_size, int num_epochs);
+// Declare the log filename as an external variable
+extern char log_filename[256];
+
 #endif // UTILITIES_H

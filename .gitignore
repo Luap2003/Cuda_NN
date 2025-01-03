@@ -2,3 +2,5 @@
 obj
 bin
 docs
+logs*
+*.ipynb

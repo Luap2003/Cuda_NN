@@ -60,10 +60,12 @@ int main() {
     ActivationType activations[] = {ACTIVATION_RELU, ACTIVATION_RELU, ACTIVATION_SIGMOID }; // ACTIVATION_NONE for input layer
 
     // Training parameters
-    int batch_size = 64;
+    int batch_size = 128;
     int num_epochs = 100;
     float learning_rate = 0.01f;
-    float decay_rate = 0.000001f;
+    float decay_rate = 0.0f;
+
+    generate_log_filename(log_filename, sizeof(log_filename), batch_size, num_epochs);
 
     // Initialize Neural Network
     NeuralNetwork nn;
