@@ -201,7 +201,8 @@ void compute_gradients(Layer *layer, float *A_prev_d, cublasHandle_t handle) {
     int block_size = 256;
     int grid_size = (n_out + block_size - 1) / block_size;
     compute_db<<<grid_size, block_size>>>(layer->db_d, layer->dZ_d, n_out, m);
-    cudaDeviceSynchronize();
+    //cudaDeviceSynchronize();
+    cudaCheckError();
 }
 
 // Kernel for activation function derivative
@@ -227,8 +228,8 @@ void backward_output_layer(Layer *layer, float *Y, float *A_prev_d, cublasHandle
 
     // Compute dZ = A - Y
     compute_dZ<<<grid_size, block_size>>>(layer->dZ_d, layer->A_d, Y, dZ_size);
-    cudaDeviceSynchronize();
-
+    //cudaDeviceSynchronize();
+    cudaCheckError();
     // Compute dW and db
     compute_gradients(layer, A_prev_d, handle);
 }
@@ -268,8 +269,8 @@ void backward_layer(Layer *layer, float *W_next_d, float *dZ_next_d, float *A_pr
     int threads = 256;
     int blocks = (total_elements + threads - 1) / threads;
     deriv_akt_kernel<<<blocks, threads>>>(layer->Z_d, layer->dZ_d, total_elements, layer->aktfunc);
-    cudaDeviceSynchronize();
-
+    //cudaDeviceSynchronize();
+    cudaCheckError();
     // Compute dW and db
     compute_gradients(layer, A_prev_d, handle);
 }
