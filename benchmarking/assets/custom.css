@@ -1,0 +1,82 @@
+/* Custom styles for Dash application */
+/*
+body {
+    font-family: 'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #121212;
+    color: #e0e0e0;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 40px 20px;
+}
+
+h1, h2, h3 {
+    color: #64B5F6;
+    margin-bottom: 20px;
+}
+
+.card {
+    background-color: #1E1E1E;
+    border-radius: 10px;
+    padding: 25px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.form-control {
+    background-color: #2C2C2C;
+    border: 1px solid #444;
+    color: #e0e0e0;
+}
+
+.form-control:focus {
+    background-color: #2C2C2C;
+    border-color: #2196F3;
+    box-shadow: 0 0 0 0.2rem rgba(33, 150, 243, 0.25);
+    color: #e0e0e0;
+}
+
+.btn-primary {
+    background-color: #2196F3;
+    border-color: #2196F3;
+}
+
+.btn-primary:hover {
+    background-color: #1E88E5;
+    border-color: #1E88E5;
+}
+*/
+/* Dropdown styles */
+/*
+.Select-control {
+    background-color: #2C2C2C !important;
+    border-color: #444 !important;
+}
+
+.Select-menu-outer {
+    background-color: #2C2C2C !important;
+    border-color: #444 !important;
+}
+
+.Select-option {
+    background-color: #2C2C2C !important;
+    color: #e0e0e0 !important;
+}
+
+.Select-option:hover {
+    background-color: #3C3C3C !important;
+}
+
+.Select-value-label {
+    color: #e0e0e0 !important;
+}
+
+.Select-placeholder,
+.Select--single > .Select-control .Select-value {
+    color: #999 !important;
+}
+*/
+/* Add more custom styles as needed */

@@ -66,6 +66,7 @@ int main() {
     float decay_rate = 0.0f;
 
     generate_log_filename(log_filename, sizeof(log_filename), batch_size, num_epochs);
+    generate_weights_biases_log_filenames(log_filename_weights, sizeof(log_filename_weights),log_filename_biases, sizeof(log_filename_biases), batch_size, num_epochs);
 
     // Initialize Neural Network
     NeuralNetwork nn;
