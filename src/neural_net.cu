@@ -49,6 +49,8 @@ void neural_network_init(NeuralNetwork *nn, int num_layers, int *layer_sizes, Ac
 }
 
 void neural_network_train(NeuralNetwork *nn, float *train_images, float *train_labels, int num_train_samples) {
+    clock_t training_start_time = clock();
+
     int m = nn->batch_size;
     int num_batches = (num_train_samples + m - 1) / m; // Ensure all samples are included
 
@@ -75,7 +77,7 @@ void neural_network_train(NeuralNetwork *nn, float *train_images, float *train_l
     srand(time(NULL));
 
     // Start overall training timer
-    clock_t training_start_time = clock();
+
 
     for (int epoch = 0; epoch < nn->num_epochs; ++epoch) {
         // Shuffle the indices array
@@ -204,7 +206,7 @@ void neural_network_train(NeuralNetwork *nn, float *train_images, float *train_l
 
         // Display the epoch progress
         display_epoch_progress(epoch + 1, nn->num_epochs, average_loss, accuracy, epoch_time, batches_per_second);
-        //log_epoch_progress(epoch + 1, nn->num_epochs, average_loss, accuracy, epoch_time, batches_per_second);
+        log_epoch_progress(epoch + 1, nn->num_epochs, average_loss, accuracy, epoch_time, batches_per_second);
 
         //log_weights(nn, epoch + 1);
         //log_biases(nn, epoch+1);
