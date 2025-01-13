@@ -274,39 +274,58 @@ void backward_layer(Layer *layer, float *W_next_d, float *dZ_next_d, float *A_pr
     // Compute dW and db
     compute_gradients(layer, A_prev_d, handle);
 }
-
-// Kernel to update weights
-__global__ void update_weights(float *w, const float *dW, float learning_rate, int size) {
+// Combined kernel to update weights and biases
+__global__ void update_params(
+    float *w,    // Pointer to weights on device
+    const float *dW,  // Pointer to weight gradients on device
+    float *b,    // Pointer to biases on device
+    const float *db,  // Pointer to bias gradients on device
+    float learning_rate,
+    int w_size,
+    int b_size
+) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < size) {
+
+    // First, update weights if idx falls within the weight range
+    if (idx < w_size) {
         w[idx] -= learning_rate * dW[idx];
     }
-}
 
-// Kernel to update biases
-__global__ void update_biases(float *b, const float *db, float learning_rate, int size) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < size) {
-        b[idx] -= learning_rate * db[idx];
+    // Next, update biases if idx falls within the bias range
+    // We shift idx by w_size to map to the bias section
+    int b_idx = idx - w_size;
+    if (b_idx >= 0 && b_idx < b_size) {
+        b[b_idx] -= learning_rate * db[b_idx];
     }
 }
-
 
 void update(Layer *layer, float learning_rate) {
     int block_size = 256;
 
-    // Update weights
-    int w_size = layer->n_out * layer->n_in;  // Total size of weights
-    int grid_size_w = (w_size + block_size - 1) / block_size;
-    update_weights<<<grid_size_w, block_size>>>(layer->w_d, layer->dW_d, learning_rate, w_size);
-    cudaDeviceSynchronize();
+    // Calculate sizes
+    int w_size = layer->n_out * layer->n_in;  // Total number of weights
+    int b_size = layer->n_out;                // Total number of biases
+    
+    // The total size is the sum of weights and biases
+    int total_size = w_size + b_size;
 
-    // Update biases
-    int b_size = layer->n_out;  // Total size of biases
-    int grid_size_b = (b_size + block_size - 1) / block_size;
-    update_biases<<<grid_size_b, block_size>>>(layer->b_d, layer->db_d, learning_rate, b_size);
-    cudaDeviceSynchronize();
+    // Configure the grid
+    int grid_size = (total_size + block_size - 1) / block_size;
+
+    // Launch the combined kernel
+    update_params<<<grid_size, block_size>>>(
+        layer->w_d,
+        layer->dW_d,
+        layer->b_d,
+        layer->db_d,
+        learning_rate,
+        w_size,
+        b_size
+    );
+    //cudaDeviceSynchronize();
+    cudaCheckError();
 }
+
 
 void free_layer(Layer *layer) {
     cudaFree(layer->w_d);
