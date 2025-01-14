@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
-#include "../include/layers.h"
 #include "../include/activations.h"
 #include "../include/mnist.h"
 #include "../include/neural_net.h"
@@ -55,9 +54,9 @@ int main() {
     }
 
     // Define network architecture
-    int num_layers = 4; // Input layer, hidden layer, output layer
-    int layer_sizes[] = { image_size, 128, 128,  10 };
-    ActivationType activations[] = {ACTIVATION_RELU, ACTIVATION_RELU, ACTIVATION_SIGMOID }; // ACTIVATION_NONE for input layer
+    int num_layers = 5; // Input layer, hidden layer, output layer
+    int layer_sizes[] = { image_size, 256, 128, 128,  10 };
+    ActivationType activations[] = {ACTIVATION_RELU, ACTIVATION_RELU,ACTIVATION_RELU, ACTIVATION_SIGMOID }; // ACTIVATION_NONE for input layer
 
     // Training parameters
     int batch_size = 128;

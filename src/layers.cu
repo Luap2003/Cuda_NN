@@ -62,10 +62,9 @@ void layer_init(Layer *layer, int m, int n_in, int n_out, ActivationType aktfunc
     cudaCheckError();
 
     // Initialize weights using Glorot Uniform
-    int threads = 256;
-    int blocks = (n_out * n_in + threads - 1) / threads;
+    int blocks = (n_out * n_in + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
     unsigned int seed = time(NULL); // For randomness; consider using a fixed seed for reproducibility
-    init_weights_kernel<<<blocks, threads>>>(layer->w_d, n_out * n_in, n_in, n_out, seed);
+    init_weights_kernel<<<blocks, THREADS_PER_BLOCK>>>(layer->w_d, n_out * n_in, n_in, n_out, seed);
     cudaCheckError();
 
     // Initialize biases to zero
@@ -131,17 +130,14 @@ void layer_forward(Layer *layer, float *A_prev_d, cublasHandle_t handle) {
         exit(EXIT_FAILURE);
     }
         
-    int threads = 256;
     int total_elements = layer->n_out * layer->m;
-    int blocks = (total_elements + threads - 1) / threads;
+    int blocks = (total_elements + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 
-    add_bias_kernel<<<blocks, threads>>>(layer->Z_d, layer->b_d, layer->n_out, layer->m);
+    add_bias_kernel<<<blocks, THREADS_PER_BLOCK>>>(layer->Z_d, layer->b_d, layer->n_out, layer->m);
     cudaCheckError();
     
-    // Apply activation function
-    threads = 256;
-    blocks = (total_elements + threads - 1) / threads;
-    activation_forward_kernel<<<blocks, threads>>>(layer->Z_d, layer->A_d, total_elements, layer->aktfunc);
+    blocks = (total_elements + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    activation_forward_kernel<<<blocks, THREADS_PER_BLOCK>>>(layer->Z_d, layer->A_d, total_elements, layer->aktfunc);
     
     cudaCheckError();
 }
@@ -197,10 +193,8 @@ void compute_gradients(Layer *layer, float *A_prev_d, cublasHandle_t handle) {
         return;
     }
 
-    // Compute db = (1/m) * sum(dZ) (column-wise sum)
-    int block_size = 256;
-    int grid_size = (n_out + block_size - 1) / block_size;
-    compute_db<<<grid_size, block_size>>>(layer->db_d, layer->dZ_d, n_out, m);
+    int grid_size = (n_out + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    compute_db<<<grid_size, THREADS_PER_BLOCK>>>(layer->db_d, layer->dZ_d, n_out, m);
     //cudaDeviceSynchronize();
     cudaCheckError();
 }
@@ -223,11 +217,10 @@ __global__ void deriv_akt_kernel(const float *Z, float *dZ, int size, Activation
 
 void backward_output_layer(Layer *layer, float *Y, float *A_prev_d, cublasHandle_t handle) {
     int dZ_size = layer->n_out * layer->m;
-    int block_size = 256;
-    int grid_size = (dZ_size + block_size - 1) / block_size;
+    int grid_size = (dZ_size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 
     // Compute dZ = A - Y
-    compute_dZ<<<grid_size, block_size>>>(layer->dZ_d, layer->A_d, Y, dZ_size);
+    compute_dZ<<<grid_size, THREADS_PER_BLOCK>>>(layer->dZ_d, layer->A_d, Y, dZ_size);
     //cudaDeviceSynchronize();
     cudaCheckError();
     // Compute dW and db
@@ -266,9 +259,8 @@ void backward_layer(Layer *layer, float *W_next_d, float *dZ_next_d, float *A_pr
 
     // Apply activation function derivative
     int total_elements = m * n;
-    int threads = 256;
-    int blocks = (total_elements + threads - 1) / threads;
-    deriv_akt_kernel<<<blocks, threads>>>(layer->Z_d, layer->dZ_d, total_elements, layer->aktfunc);
+    int blocks = (total_elements + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    deriv_akt_kernel<<<blocks, THREADS_PER_BLOCK>>>(layer->Z_d, layer->dZ_d, total_elements, layer->aktfunc);
     //cudaDeviceSynchronize();
     cudaCheckError();
     // Compute dW and db
@@ -300,8 +292,6 @@ __global__ void update_params(
 }
 
 void update(Layer *layer, float learning_rate) {
-    int block_size = 256;
-
     // Calculate sizes
     int w_size = layer->n_out * layer->n_in;  // Total number of weights
     int b_size = layer->n_out;                // Total number of biases
@@ -310,10 +300,10 @@ void update(Layer *layer, float learning_rate) {
     int total_size = w_size + b_size;
 
     // Configure the grid
-    int grid_size = (total_size + block_size - 1) / block_size;
+    int grid_size = (total_size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 
     // Launch the combined kernel
-    update_params<<<grid_size, block_size>>>(
+    update_params<<<grid_size, THREADS_PER_BLOCK>>>(
         layer->w_d,
         layer->dW_d,
         layer->b_d,
