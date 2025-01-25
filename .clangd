@@ -1,8 +1,10 @@
 CompileFlags:
   Add: 
     - --no-cuda-version-check
+    - -nocudainc
+    - -nocudalib
     - -x
     - cuda
-    - -I/path/to/cuda/include
+    # - -I/path/to/cuda/include
   Remove:
     - -arch=sm_86
