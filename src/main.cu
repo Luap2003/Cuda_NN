@@ -1,16 +1,44 @@
 // main.c
+#include <cstdlib>
 #include <stdio.h>
 #include <stdlib.h>
 #include <cuda_runtime.h>
+#include <string.h>
 #include <cublas_v2.h>
 #include "../include/activations.h"
 #include "../include/mnist.h"
 #include "../include/neural_net.h"
 #include "../include/utilities.h"
+#include "../include/config.h"
 
 
 
-int main() {
+int main(int argc, char *argv[]) {
+
+    Config config = {NULL, -1 , -1, -1, NULL};
+
+    char *config_file = "config.txt";
+    if (argc > 1){
+        // Loop through arguments to find "-c"
+        for (int i = 1; i < argc; i++) {
+            if (strcmp(argv[i], "-c") == 0) {
+                if (i + 1 < argc) { // Check if a file name follows "-c"
+                    char *config_file = argv[i + 1];
+                    int parser_check = parser(config_file, &config);
+                    if(parser_check != 0){
+                        printf("Error parsing config file!");
+                        return EXIT_FAILURE;
+                    }
+                } else {
+                    printf("Error: Missing argument after -c\n");
+                    return EXIT_FAILURE; // Exit with error
+                }
+            }
+        }
+    }
+
+
+    
     // Load MNIST training data
     float *train_images;
     int num_train_images;
@@ -84,6 +112,9 @@ int main() {
     free(train_labels);
     free(test_images);
     free(test_labels);
+
+    free(config.activation_functions);
+    free(config.hidden_layers);
 
     return 0;
 }
