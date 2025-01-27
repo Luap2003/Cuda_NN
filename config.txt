@@ -1,0 +1,8 @@
+hidden_layers = [256, 128, 128]
+output_layer = 10
+activation_functions = [ACTIVATION_RELU, ACTIVATION_RELU, ACTIVATION_RELU, ACTIVATION_SIGMOID]
+batch_size = 128
+num_epochs = 100
+learning_rate = 0.01
+decay_rate = 0.0
+

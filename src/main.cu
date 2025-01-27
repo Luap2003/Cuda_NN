@@ -11,20 +11,26 @@
 #include "../include/utilities.h"
 #include "../include/config.h"
 
+#define CONFIG_FILE "config.txt"
+
 
 
 int main(int argc, char *argv[]) {
+    #if defined(DEBUG) || defined(CONFIG_DEBUG)  
+    printf("Running in DEBUG mode!\n\n");
+    #endif
 
     Config config = {NULL, -1 , -1, -1, NULL};
 
-    char *config_file = "config.txt";
     if (argc > 1){
+        int config_read = 0;
         // Loop through arguments to find "-c"
         for (int i = 1; i < argc; i++) {
             if (strcmp(argv[i], "-c") == 0) {
                 if (i + 1 < argc) { // Check if a file name follows "-c"
                     char *config_file = argv[i + 1];
                     int parser_check = parser(config_file, &config);
+                    config_read = 1;
                     if(parser_check != 0){
                         printf("Error parsing config file!");
                         return EXIT_FAILURE;
@@ -35,10 +41,18 @@ int main(int argc, char *argv[]) {
                 }
             }
         }
+        if(!config_read){
+            int parser_check = parser(CONFIG_FILE, &config);
+            if(parser_check != 0){
+                printf("Error parsing config file!");
+                return EXIT_FAILURE;
+            }
+        }
     }
 
 
     
+    #ifndef CONFIG_DEBUG
     // Load MNIST training data
     float *train_images;
     int num_train_images;
@@ -82,15 +96,8 @@ int main(int argc, char *argv[]) {
     }
 
     // Define network architecture
-    int num_layers = 5; // Input layer, hidden layer, output layer
-    int layer_sizes[] = { image_size, 256, 128, 128,  10 };
-    ActivationType activations[] = {ACTIVATION_RELU, ACTIVATION_RELU,ACTIVATION_RELU, ACTIVATION_SIGMOID }; // ACTIVATION_NONE for input layer
 
     // Training parameters
-    int batch_size = 128;
-    int num_epochs = 100;
-    float learning_rate = 0.01f;
-    float decay_rate = 0.0f;
 
     generate_log_filename(log_filename, sizeof(log_filename), batch_size, num_epochs);
     generate_weights_biases_log_filenames(log_filename_weights, sizeof(log_filename_weights),log_filename_biases, sizeof(log_filename_biases), batch_size, num_epochs);
@@ -112,6 +119,7 @@ int main(int argc, char *argv[]) {
     free(train_labels);
     free(test_images);
     free(test_labels);
+    #endif
 
     free(config.activation_functions);
     free(config.hidden_layers);
