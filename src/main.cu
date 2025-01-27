@@ -40,6 +40,7 @@ int main(int argc, char *argv[]) {
                     return EXIT_FAILURE; // Exit with error
                 }
             }
+            
         }
         if(!config_read){
             int parser_check = parser(CONFIG_FILE, &config);
@@ -51,7 +52,6 @@ int main(int argc, char *argv[]) {
     }
 
 
-    
     #ifndef CONFIG_DEBUG
     // Load MNIST training data
     float *train_images;
@@ -96,8 +96,18 @@ int main(int argc, char *argv[]) {
     }
 
     // Define network architecture
+    int num_layers = config.number_layers;
+    if(config.input_layer == -1 ){
+        config.layers_sizes[0] = image_size;
+    }
+    int * layer_sizes = config.layers_sizes;
+    ActivationType * activations = config.activation_functions;
 
     // Training parameters
+    int batch_size = config.batch_size;
+    int num_epochs = config.num_epochs;
+    float learning_rate = config.learning_rate;
+    float decay_rate = config.decay_rate;
 
     generate_log_filename(log_filename, sizeof(log_filename), batch_size, num_epochs);
     generate_weights_biases_log_filenames(log_filename_weights, sizeof(log_filename_weights),log_filename_biases, sizeof(log_filename_biases), batch_size, num_epochs);

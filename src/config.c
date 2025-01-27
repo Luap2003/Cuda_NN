@@ -15,40 +15,8 @@ void remove_spaces(char* s) {
   } while ((*s++ = *d++));
 }
 
-int parse_config(char *config_file, Config *config){
-
+int hidden_layers(Config *config, char *value){
   
-  char line[256];
-  FILE *file = fopen("config.txt", "r");
-  if(file == NULL){
-    printf("Can not open file!\n");
-    return -1;
-  }
-
-  while(fgets(line, sizeof(line), file)){
-
-    char *key;
-    char *value;
-    remove_spaces(line);
-
-    
-    if(line[0] == '#')
-      continue;
-    if(line[0] == '\n')
-      continue;
-
-    
-    line[strcspn(line, "\n")] = '\0';
-    key = strtok(line, "=");
-    value = strtok(NULL, "=");
-
-    if(strcmp(key, "input_layer") == 0)
-      config->input_layer = atoi(value);
-
-    if(strcmp(key, "output_layer") == 0)
-      config->output_layer = atoi(value);
-
-
       int count = 0;
       int size = 1;
       for (const char *p = value; *p; p++) {
@@ -62,7 +30,6 @@ int parse_config(char *config_file, Config *config){
       if(config->hidden_layers == NULL){
         free(config->hidden_layers);
         printf("Memory allocatoins failed! \n");
-        return -1;
         return 1;
       }
 
@@ -82,9 +49,11 @@ int parse_config(char *config_file, Config *config){
 
         token = strtok(NULL, ",");
       }
-      
-    } 
+      return 0;
+}
 
+int activation_functions(Config *config, char *value){
+  
       int size = 1;
       for (const char *p = value; *p; p++) {
           if (*p == ',') {
@@ -98,7 +67,6 @@ int parse_config(char *config_file, Config *config){
       str_arr = (char**)malloc(size * (sizeof(char*)));
       if(str_arr == NULL){
         printf("Memory allocatoins failed! \n");
-        return -1;
         return 1;
       }
 
@@ -118,7 +86,6 @@ int parse_config(char *config_file, Config *config){
         str_arr[pos] = (char*)malloc(len * (sizeof(char)));
         if(str_arr[pos] == NULL){
           printf("Memory allocation failed!\n");
-          return -1;
           return 1;
         }
         for(int i = 0; i<len; i++){
@@ -135,7 +102,9 @@ int parse_config(char *config_file, Config *config){
 
         token = strtok(NULL, ",");
       }
-      
+      return 0;
+}
+
 int parser(char *config_file, Config *config){
 
   
@@ -186,46 +155,18 @@ int parser(char *config_file, Config *config){
       config->output_layer = atoi(value);
 
     if(strcmp(key, "hidden_layers") == 0){
+      if(hidden_layers(config, value) != 0)
+        return 1;
+    } 
+
     if(strcmp(key, "activation_functions") == 0){
+      if(activation_functions(config, value) != 0)
+        return 1;
     } 
   }
 
   fclose(file);
 
-  // printf("Hidden Layers:");
-  // for(int i = 0; i < config->number_layers-2; i++){
-  //   printf(" %d",config->hidden_layers[i]);
-  //   if(i < config->number_layers -3)
-  //     printf(",");
-  // }
-  // printf("\n");
-  // printf("Input Layer: %d\n", config->input_layer);
-  // printf("Output Layer: %d\n", config->output_layer);
-  // printf("Number of Layers: %d\n", config->number_layers);
-  // printf("Activation Functions:");
-  // for(int i = 0; i < config->number_layers; i++){
-  //   printf(" %d", config->activation_functions[i]);
-  //   if(i < config->number_layers -1)
-  //     printf(",");
-  // }
-  // printf("\n");
-
-  // int layer_sizes[config->number_layers];
-  // layer_sizes[0] = config->input_layer;
-  // for(int i = 0; i < config->number_layers-2; i++){
-  //   layer_sizes[i] = config->hidden_layers[i];
-  // }
-  // layer_sizes[config->number_layers-1] = config->output_layer;
-
-  // ActivationType test[config->number_layers];
-  // for(int i = 0; i<config->number_layers; i++){
-  //   test[i] = (ActivationType) config->activation_functions[i];
-  // }
-
-  // free(config->hidden_layers);
-  // free(config->activation_functions);
-  
-  
   config->layers_sizes = (int *) malloc(config->number_layers * sizeof(int));
   config->layers_sizes[0] = config->input_layer;
   if(config->hidden_layers != NULL){
