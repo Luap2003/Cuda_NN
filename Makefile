@@ -1,7 +1,13 @@
 # Compiler settings
+ARCH = sm_$(shell nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits | tr -d '.')
 NVCC        = nvcc
-NVCC_FLAGS  = -arch=sm_86 -O2 -I./include -I/usr/local/cuda/include -I./tests/unity -lcublas
+CC          = gcc
+NVCC_FLAGS  = -arch=$(ARCH) -O2 -I./include -I/usr/local/cuda/include -I./tests/unity -lcublas
+CC_FLAGS    = -O2 -I./include -I/usr/local/cuda/include -I./tests/unity
 LD_FLAGS    = -L/usr/local/cuda/lib64 -lcudart -lcublas -lm
+
+CC_FLAGS += $(DEBUG)
+NVCC_FLAGS += $(DEBUG)
 
 # Directories
 SRC_DIR     = ./src
@@ -14,6 +20,8 @@ UNITY_DIR   = $(TEST_DIR)/unity
 # Source files
 CU_SOURCES  = $(wildcard $(SRC_DIR)/*.cu)
 CU_OBJECTS  = $(patsubst $(SRC_DIR)/%.cu, $(OBJ_DIR)/%.o, $(CU_SOURCES))
+C_SOURCES  = $(wildcard $(SRC_DIR)/*.c)
+C_OBJECTS  = $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(C_SOURCES))
 
 CU_OBJECTS_NO_MAIN = $(filter-out $(OBJ_DIR)/main.o, $(CU_OBJECTS))
 # Unity files
@@ -32,8 +40,8 @@ TEST_TARGET = $(BIN_DIR)/test_runner
 all: $(TARGET) $(TEST_TARGET)
 
 # Build the main project executable
-$(TARGET): $(CU_OBJECTS) | $(BIN_DIR)
-	$(NVCC) $(NVCC_FLAGS) -o $@ $^ $(LD_FLAGS)
+$(TARGET): $(CU_OBJECTS) $(C_OBJECTS) | $(BIN_DIR)
+	$(NVCC) $(NVCC_FLAGS) -o $@ $(CU_OBJECTS) $(C_OBJECTS) $(LD_FLAGS)
 
 # Build the test runner executable
 $(TEST_TARGET): $(TEST_OBJECTS) $(UNITY_OBJ) $(CU_OBJECTS_NO_MAIN) | $(BIN_DIR)
@@ -42,6 +50,10 @@ $(TEST_TARGET): $(TEST_OBJECTS) $(UNITY_OBJ) $(CU_OBJECTS_NO_MAIN) | $(BIN_DIR)
 # Compile CUDA source files into object files
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cu | $(OBJ_DIR)
 	$(NVCC) $(NVCC_FLAGS) -c $< -o $@
+
+# Compile C source files into object files using GCC
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
+	$(CC) $(CC_FLAGS) -c $< -o $@
 
 # Compile test C source files into object files using NVCC
 $(OBJ_DIR)/%.o: $(TEST_DIR)/%.c | $(OBJ_DIR)
