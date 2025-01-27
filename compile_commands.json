@@ -1,0 +1,35 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/nvcc",
+      "-arch=sm_61",
+      "-O2",
+      "-I./include",
+      "-I/usr/local/cuda/include",
+      "-I./tests/unity",
+      "-c",
+      "-o",
+      "obj/main.o",
+      "src/main.cu"
+    ],
+    "directory": "/home/nils/Documents/cuda_nn",
+    "file": "/home/nils/Documents/cuda_nn/src/main.cu",
+    "output": "/home/nils/Documents/cuda_nn/obj/main.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-O2",
+      "-I./include",
+      "-I/usr/local/cuda/include",
+      "-I./tests/unity",
+      "-c",
+      "-o",
+      "obj/config.o",
+      "src/config.c"
+    ],
+    "directory": "/home/nils/Documents/cuda_nn",
+    "file": "/home/nils/Documents/cuda_nn/src/config.c",
+    "output": "/home/nils/Documents/cuda_nn/obj/config.o"
+  }
+]
