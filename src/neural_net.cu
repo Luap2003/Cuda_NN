@@ -5,6 +5,22 @@
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
+__global__ void gather_batch_kernel(const float *full_data,
+                                      const int *indices,
+                                      int batch_start,
+                                      int current_batch_size,
+                                      int sample_size,
+                                      float *batch_data) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total_elements = current_batch_size * sample_size;
+    if (idx < total_elements) {
+        int sample_index = idx / sample_size;    // which sample (within this batch)
+        int feature_index = idx % sample_size;     // which feature within the sample
+        int global_index = indices[batch_start + sample_index];
+        batch_data[idx] = full_data[global_index * sample_size + feature_index];
+    }
+}
+
 
 void neural_network_init(NeuralNetwork *nn, int num_layers, int *layer_sizes, ActivationType *activations, int batch_size, int num_epochs, float learning_rate, float decay_rate) {
     nn->num_layers = num_layers;
@@ -48,99 +64,107 @@ void neural_network_init(NeuralNetwork *nn, int num_layers, int *layer_sizes, Ac
     }
 }
 
-void neural_network_train(NeuralNetwork *nn, float *train_images, float *train_labels, int num_train_samples) {
-    clock_t training_start_time = clock();
-
+void neural_network_train(NeuralNetwork *nn,
+                          float *train_images,
+                          float *train_labels,
+                          int num_train_samples) {
     int m = nn->batch_size;
-    int num_batches = (num_train_samples + m - 1) / m; // Ensure all samples are included
-
+    int num_batches = (num_train_samples + m - 1) / m;
     int input_size = nn->layer_sizes[0];
     int output_size = nn->layer_sizes[nn->num_layers - 1];
 
-    size_t input_batch_size = input_size * m * sizeof(float);
-    size_t label_batch_size = output_size * m * sizeof(float);
+    // --- Preload the full dataset into device memory ---
+    size_t full_input_size = input_size * num_train_samples * sizeof(float);
+    size_t full_label_size = output_size * num_train_samples * sizeof(float);
+    float *d_train_images, *d_train_labels;
+    cudaMalloc(&d_train_images, full_input_size);
+    cudaMalloc(&d_train_labels, full_label_size);
+    cudaMemcpy(d_train_images, train_images, full_input_size, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_train_labels, train_labels, full_label_size, cudaMemcpyHostToDevice);
 
-    // Allocate device memory for input data and labels
-    float *X_train_d;
-    float *Y_train_d;
+    // --- Allocate device buffers for the current batch ---
+    float *d_X_batch, *d_Y_batch;
+    cudaMalloc(&d_X_batch, input_size * m * sizeof(float));
+    cudaMalloc(&d_Y_batch, output_size * m * sizeof(float));
 
-    cudaMalloc((void**)&X_train_d, input_batch_size);
-    cudaMalloc((void**)&Y_train_d, label_batch_size);
+    // --- Allocate and initialize the indices array ---
+    int *d_indices;
+    cudaMalloc(&d_indices, num_train_samples * sizeof(int));
+    int *h_indices = (int *)malloc(num_train_samples * sizeof(int));
+    for (int i = 0; i < num_train_samples; i++)
+        h_indices[i] = i;
+    cudaMemcpy(d_indices, h_indices, num_train_samples * sizeof(int), cudaMemcpyHostToDevice);
 
-    // Initialize indices array for shuffling
-    int *indices = (int *)malloc(num_train_samples * sizeof(int));
-    for (int i = 0; i < num_train_samples; ++i) {
-        indices[i] = i;
-    }
-
-    // Seed the random number generator
-    srand(time(NULL));
-
-    // Start overall training timer
-
-
+    // Main training loop over epochs.
     for (int epoch = 0; epoch < nn->num_epochs; ++epoch) {
-        // Shuffle the indices array
+        clock_t epoch_start_time = clock();
+
+        // Shuffle the indices on the host.
         for (int i = num_train_samples - 1; i > 0; --i) {
             int j = rand() % (i + 1);
-            int temp = indices[i];
-            indices[i] = indices[j];
-            indices[j] = temp;
+            int temp = h_indices[i];
+            h_indices[i] = h_indices[j];
+            h_indices[j] = temp;
         }
+        cudaMemcpy(d_indices, h_indices, num_train_samples * sizeof(int), cudaMemcpyHostToDevice);
 
-        clock_t epoch_start_time = clock();
+        // Optionally decay the learning rate.
         nn->learning_rate = nn->initial_learning_rate * expf(-nn->decay_rate * epoch);
         float total_loss = 0.0f;
         int total_samples = 0;
         int correct_predictions = 0;
 
+        // Loop over batches.
         for (int batch = 0; batch < num_batches; ++batch) {
-            // Calculate current batch size (handle last batch)
             int batch_start = batch * m;
-            int current_batch_size = ((batch_start + m) > num_train_samples) ? (num_train_samples - batch_start) : m;
+            int current_batch_size = ((batch_start + m) > num_train_samples) ?
+                                     (num_train_samples - batch_start) : m;
 
-            // Allocate host memory for batch data
-            float *X_batch = (float *)malloc(input_size * current_batch_size * sizeof(float));
-            float *Y_batch = (float *)malloc(output_size * current_batch_size * sizeof(float));
+            // --- Gather the batch data from the full dataset on the device ---
+            int threadsPerBlock = 256;
+            int total_elements = current_batch_size * input_size;
+            int blocks = (total_elements + threadsPerBlock - 1) / threadsPerBlock;
+            gather_batch_kernel<<<blocks, threadsPerBlock>>>(d_train_images, d_indices,
+                                                             batch_start, current_batch_size,
+                                                             input_size, d_X_batch);
+            cudaDeviceSynchronize();
+            cudaCheckError();
 
-            // Gather batch data using shuffled indices
-            for (int i = 0; i < current_batch_size; ++i) {
-                int idx = indices[batch_start + i];
-                // Copy input data
-                memcpy(&X_batch[i * input_size], &train_images[idx * input_size], input_size * sizeof(float));
-                // Copy label data
-                memcpy(&Y_batch[i * output_size], &train_labels[idx * output_size], output_size * sizeof(float));
-            }
+            total_elements = current_batch_size * output_size;
+            blocks = (total_elements + threadsPerBlock - 1) / threadsPerBlock;
+            gather_batch_kernel<<<blocks, threadsPerBlock>>>(d_train_labels, d_indices,
+                                                             batch_start, current_batch_size,
+                                                             output_size, d_Y_batch);
+            cudaDeviceSynchronize();
+            cudaCheckError();
 
-            // Copy batch data to device
-            cudaMemcpy(X_train_d, X_batch, input_size * current_batch_size * sizeof(float), cudaMemcpyHostToDevice);
-            cudaMemcpy(Y_train_d, Y_batch, output_size * current_batch_size * sizeof(float), cudaMemcpyHostToDevice);
-
-            // Update batch size in neural network and layers
+            // Update the current batch size in the network and its layers.
             nn->batch_size = current_batch_size;
-            for (int i = 0; i < nn->num_layers - 1; ++i) {
+            for (int i = 0; i < nn->num_layers - 1; ++i)
                 nn->layers[i].m = current_batch_size;
-            }
 
-            // Forward propagation
-            float *A_prev_d = X_train_d;
+            // --- Forward propagation ---
+            float *A_prev_d = d_X_batch;
             for (int i = 0; i < nn->num_layers - 1; ++i) {
                 layer_forward(&nn->layers[i], A_prev_d, nn->handle);
                 A_prev_d = nn->layers[i].A_d;
             }
 
-            // Copy predictions back to host
+            // Copy the network’s output (predictions) back to host to compute loss/accuracy.
             Layer *output_layer = &nn->layers[nn->num_layers - 2];
             float *A_output_h = (float *)malloc(output_size * current_batch_size * sizeof(float));
-            cudaMemcpy(A_output_h, output_layer->A_d, output_size * current_batch_size * sizeof(float), cudaMemcpyDeviceToHost);
+            cudaMemcpy(A_output_h, output_layer->A_d, output_size * current_batch_size * sizeof(float),
+                       cudaMemcpyDeviceToHost);
 
-            // Compute batch loss and accuracy
+            // --- Compute loss (cross-entropy) and accuracy on the host ---
             float batch_loss = 0.0f;
             for (int i = 0; i < current_batch_size; ++i) {
                 for (int j = 0; j < output_size; ++j) {
-                    float y_ij = Y_batch[i * output_size + j];
+                    // Since the training labels are still on the host,
+                    // use the shuffled indices to locate the proper label.
+                    int global_index = h_indices[batch_start + i];
+                    float y_ij = train_labels[global_index * output_size + j];
                     float p_ij = A_output_h[i * output_size + j];
-                    // Clamp p_ij to avoid log(0)
                     float p_ij_clamped = fmaxf(p_ij, 1e-7f);
                     batch_loss -= y_ij * logf(p_ij_clamped);
                 }
@@ -148,7 +172,6 @@ void neural_network_train(NeuralNetwork *nn, float *train_images, float *train_l
             total_loss += batch_loss;
             total_samples += current_batch_size;
 
-            // Compute accuracy
             for (int i = 0; i < current_batch_size; ++i) {
                 int predicted_label = 0;
                 float max_prob = A_output_h[i * output_size];
@@ -158,64 +181,65 @@ void neural_network_train(NeuralNetwork *nn, float *train_images, float *train_l
                         predicted_label = j;
                     }
                 }
-                // Get true label
                 int true_label = 0;
                 for (int j = 0; j < output_size; ++j) {
-                    if (Y_batch[i * output_size + j] == 1.0f) {
+                    int global_index = h_indices[batch_start + i];
+                    if (train_labels[global_index * output_size + j] == 1.0f) {
                         true_label = j;
                         break;
                     }
                 }
-                if (predicted_label == true_label) {
+                if (predicted_label == true_label)
                     correct_predictions++;
-                }
             }
-
-            // Free host memory for batch data
-            free(X_batch);
-            free(Y_batch);
             free(A_output_h);
 
-            // Backward propagation
-            // Output layer
-            backward_output_layer(&nn->layers[nn->num_layers - 2], Y_train_d, nn->layers[nn->num_layers - 3].A_d, nn->handle);
-            // Hidden layers
+            // --- Backward propagation ---
+            // For the output layer use d_Y_batch as the true labels.
+            backward_output_layer(&nn->layers[nn->num_layers - 2],
+                                    d_Y_batch,
+                                    nn->layers[nn->num_layers - 3].A_d,
+                                    nn->handle);
+            // Propagate backwards through the hidden layers.
             for (int i = nn->num_layers - 3; i >= 0; --i) {
-                float *A_prev_d = (i == 0) ? X_train_d : nn->layers[i - 1].A_d;
+                float *A_prev_d = (i == 0) ? d_X_batch : nn->layers[i - 1].A_d;
                 float *W_next_d = nn->layers[i + 1].w_d;
                 float *dZ_next_d = nn->layers[i + 1].dZ_d;
                 int n_out_next = nn->layers[i + 1].n_out;
                 backward_layer(&nn->layers[i], W_next_d, dZ_next_d, A_prev_d, n_out_next, nn->handle);
             }
 
-            // Update weights
-            for (int i = 0; i < nn->num_layers - 1; ++i) {
+            // --- Update the weights ---
+            for (int i = 0; i < nn->num_layers - 1; ++i)
                 update(&nn->layers[i], nn->learning_rate);
-            }
-        }
+        } // end for (batch)
 
         float average_loss = total_loss / total_samples;
         float accuracy = (float)correct_predictions / total_samples * 100.0f;
-
-        // Calculate time taken for the epoch
         clock_t epoch_end_time = clock();
         float epoch_time = (float)(epoch_end_time - epoch_start_time) / CLOCKS_PER_SEC;
-
-        // Calculate batches per second
         float batches_per_second = num_batches / epoch_time;
 
         // Display the epoch progress
-        //display_epoch_progress(epoch + 1, nn->num_epochs, average_loss, accuracy, epoch_time, batches_per_second);
+        display_epoch_progress(epoch + 1, nn->num_epochs, average_loss, accuracy, epoch_time, batches_per_second);
         //log_epoch_progress(epoch + 1, nn->num_epochs, average_loss, accuracy, epoch_time, batches_per_second);
 
         //log_weights(nn, epoch + 1);
         //log_biases(nn, epoch+1);
+        
+        // Optionally, print progress information.
+        //printf("Epoch %d: Loss = %.4f, Accuracy = %.2f%%, Time = %.2fs, Batches/s = %.2f\n",
+        //       epoch + 1, average_loss, accuracy, epoch_time, batches_per_second);
     }
     printf("\n");
 
-    cudaFree(X_train_d);
-    cudaFree(Y_train_d);
-    free(indices); // Free the indices array
+    // Free all allocated device and host buffers.
+    cudaFree(d_train_images);
+    cudaFree(d_train_labels);
+    cudaFree(d_X_batch);
+    cudaFree(d_Y_batch);
+    cudaFree(d_indices);
+    free(h_indices);
 }
 
 void neural_network_evaluate(NeuralNetwork *nn, float *test_images, float *test_labels, int num_test_samples) {
