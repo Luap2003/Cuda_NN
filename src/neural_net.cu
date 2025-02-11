@@ -5,21 +5,43 @@
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
-__global__ void gather_batch_kernel(const float *full_data,
-                                      const int *indices,
-                                      int batch_start,
-                                      int current_batch_size,
-                                      int sample_size,
-                                      float *batch_data) {
+// Combined kernel: gathers both images and labels in one launch.
+__global__ void gather_batch_two_kernel(const float *src_images,
+                                          const float *src_labels,
+                                          const int   *indices,
+                                          int          batch_start,
+                                          int          current_batch_size,
+                                          int          image_sample_size, // e.g. input_size
+                                          int          label_sample_size, // e.g. output_size
+                                          float       *dest_images,
+                                          float       *dest_labels)
+{
+    // Total number of elements to gather from images and labels:
+    int total_images = current_batch_size * image_sample_size;
+    int total_labels = current_batch_size * label_sample_size;
+    int total_elements = total_images + total_labels;
+    
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int total_elements = current_batch_size * sample_size;
     if (idx < total_elements) {
-        int sample_index = idx / sample_size;    // which sample (within this batch)
-        int feature_index = idx % sample_size;     // which feature within the sample
-        int global_index = indices[batch_start + sample_index];
-        batch_data[idx] = full_data[global_index * sample_size + feature_index];
+        if (idx < total_images) {
+            // This thread gathers an element from the images buffer.
+            int sample_index = idx / image_sample_size;     // which sample in the batch
+            int feature_index = idx % image_sample_size;      // which feature within the sample
+            // Look up the global sample index from the shuffled indices.
+            int global_index = indices[batch_start + sample_index];
+            dest_images[idx] = src_images[global_index * image_sample_size + feature_index];
+        }
+        else {
+            // Adjust the index for the labels part.
+            int j = idx - total_images;
+            int sample_index = j / label_sample_size;         // which sample in the batch
+            int feature_index = j % label_sample_size;          // which label within the sample
+            int global_index = indices[batch_start + sample_index];
+            dest_labels[j] = src_labels[global_index * label_sample_size + feature_index];
+        }
     }
 }
+
 
 
 void neural_network_init(NeuralNetwork *nn, int num_layers, int *layer_sizes, ActivationType *activations, int batch_size, int num_epochs, float learning_rate, float decay_rate) {
@@ -121,21 +143,17 @@ void neural_network_train(NeuralNetwork *nn,
                                      (num_train_samples - batch_start) : m;
 
             // --- Gather the batch data from the full dataset on the device ---
-            int threadsPerBlock = 256;
-            int total_elements = current_batch_size * input_size;
-            int blocks = (total_elements + threadsPerBlock - 1) / threadsPerBlock;
-            gather_batch_kernel<<<blocks, threadsPerBlock>>>(d_train_images, d_indices,
-                                                             batch_start, current_batch_size,
-                                                             input_size, d_X_batch);
-            cudaDeviceSynchronize();
-            cudaCheckError();
 
-            total_elements = current_batch_size * output_size;
-            blocks = (total_elements + threadsPerBlock - 1) / threadsPerBlock;
-            gather_batch_kernel<<<blocks, threadsPerBlock>>>(d_train_labels, d_indices,
-                                                             batch_start, current_batch_size,
-                                                             output_size, d_Y_batch);
-            cudaDeviceSynchronize();
+            int total_images = current_batch_size * input_size;
+            int total_labels = current_batch_size * output_size;
+            int total_elements = total_images + total_labels;
+            int blocks = (total_elements + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+
+            // Launch the combined kernel.
+            gather_batch_two_kernel<<<blocks, THREADS_PER_BLOCK>>>(d_train_images, d_train_labels, d_indices,
+                                                                batch_start, current_batch_size,
+                                                                input_size, output_size,
+                                                                d_X_batch, d_Y_batch);
             cudaCheckError();
 
             // Update the current batch size in the network and its layers.
