@@ -26,6 +26,12 @@ int main(int argc, char *argv[]) {
         int config_read = 0;
         // Loop through arguments to find "-c"
         for (int i = 1; i < argc; i++) {
+            if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0){
+                printf("\n");
+                printf("-c \t\t Provide path to config.\n");
+                printf("-h/--help \t Show this message.\n");
+                printf("\n");
+            }
             if (strcmp(argv[i], "-c") == 0) {
                 if (i + 1 < argc) { // Check if a file name follows "-c"
                     char *config_file = argv[i + 1];
