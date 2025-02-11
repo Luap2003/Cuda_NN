@@ -205,8 +205,8 @@ void neural_network_train(NeuralNetwork *nn, float *train_images, float *train_l
         float batches_per_second = num_batches / epoch_time;
 
         // Display the epoch progress
-        display_epoch_progress(epoch + 1, nn->num_epochs, average_loss, accuracy, epoch_time, batches_per_second);
-        log_epoch_progress(epoch + 1, nn->num_epochs, average_loss, accuracy, epoch_time, batches_per_second);
+        //display_epoch_progress(epoch + 1, nn->num_epochs, average_loss, accuracy, epoch_time, batches_per_second);
+        //log_epoch_progress(epoch + 1, nn->num_epochs, average_loss, accuracy, epoch_time, batches_per_second);
 
         //log_weights(nn, epoch + 1);
         //log_biases(nn, epoch+1);
