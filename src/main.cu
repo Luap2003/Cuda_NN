@@ -16,7 +16,7 @@
 
 
 int main(int argc, char *argv[]) {
-    #if defined(DEBUG) || defined(CONFIG_DEBUG)  
+    #if defined(DEBUG) || defined(DEBUG_CONFIG)  
     printf("Running in DEBUG mode!\n\n");
     #endif
 
@@ -52,7 +52,7 @@ int main(int argc, char *argv[]) {
     }
 
 
-    #ifndef CONFIG_DEBUG
+    #ifndef DEBUG_CONFIG
     // Load MNIST training data
     float *train_images;
     int num_train_images;
@@ -109,8 +109,10 @@ int main(int argc, char *argv[]) {
     float learning_rate = config.learning_rate;
     float decay_rate = config.decay_rate;
 
+    #ifdef LOG
     generate_log_filename(log_filename, sizeof(log_filename), batch_size, num_epochs);
     generate_weights_biases_log_filenames(log_filename_weights, sizeof(log_filename_weights),log_filename_biases, sizeof(log_filename_biases), batch_size, num_epochs);
+    #endif
 
     // Initialize Neural Network
     NeuralNetwork nn;

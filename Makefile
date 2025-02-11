@@ -1,3 +1,18 @@
+# Takes LOG, DEBUG_CONFIG, DEBUG
+DEBUG ?=
+
+ifeq ($(DEBUG), LOG)
+    DEBUG_FLAG += -DLOG
+endif
+ifeq ($(DEBUG), DEBUG_CONFIG)
+    DEBUG_FLAG += -DDEBUG_CONFIG
+endif
+ifeq ($(DEBUG), DEBUG)
+    DEBUG_FLAG += -DDEBUG
+endif
+
+
+
 # Compiler settings
 ARCH = sm_$(shell nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits | tr -d '.')
 NVCC        = nvcc
@@ -6,8 +21,8 @@ NVCC_FLAGS  = -arch=$(ARCH) -O2 -I./include -I/usr/local/cuda/include -I./tests/
 CC_FLAGS    = -O2 -I./include -I/usr/local/cuda/include -I./tests/unity
 LD_FLAGS    = -L/usr/local/cuda/lib64 -lcudart -lcublas -lm
 
-CC_FLAGS += $(DEBUG)
-NVCC_FLAGS += $(DEBUG)
+CC_FLAGS += $(DEBUG_FLAG)
+NVCC_FLAGS += $(DEBUG_FLAG)
 
 # Directories
 SRC_DIR     = ./src

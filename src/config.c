@@ -179,7 +179,7 @@ int parser(char *config_file, Config *config){
 
 
   
-  #if defined(DEBUG) || defined(CONFIG_DEBUG)
+  #if defined(DEBUG) || defined(DEBUG_CONFIG)
   printf("Hidden Layers:");
   if(config->hidden_layers != NULL){
     for(int i = 0; i < config->number_layers-2; i++){

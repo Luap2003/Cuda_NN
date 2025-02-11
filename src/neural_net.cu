@@ -240,11 +240,12 @@ void neural_network_train(NeuralNetwork *nn,
 
         // Display the epoch progress
         display_epoch_progress(epoch + 1, nn->num_epochs, average_loss, accuracy, epoch_time, batches_per_second);
-        //log_epoch_progress(epoch + 1, nn->num_epochs, average_loss, accuracy, epoch_time, batches_per_second);
+        #ifdef LOG
+        log_epoch_progress(epoch + 1, nn->num_epochs, average_loss, accuracy, epoch_time, batches_per_second);
 
-        //log_weights(nn, epoch + 1);
-        //log_biases(nn, epoch+1);
-        
+        log_weights(nn, epoch + 1);
+        log_biases(nn, epoch+1);
+        #endif
         // Optionally, print progress information.
         //printf("Epoch %d: Loss = %.4f, Accuracy = %.2f%%, Time = %.2fs, Batches/s = %.2f\n",
         //       epoch + 1, average_loss, accuracy, epoch_time, batches_per_second);

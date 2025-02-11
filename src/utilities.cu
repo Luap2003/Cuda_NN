@@ -5,10 +5,13 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <time.h>
+
+#ifdef LOG
 // Define the log filename with a default value
 char log_filename[256];
 char log_filename_weights[256];
 char log_filename_biases[256];
+#endif
 
 void display_progress_bar(int current, int total, int bar_width) {
     float progress = (float)current / total;
@@ -69,6 +72,7 @@ void display_epoch_progress(int current_epoch, int total_epochs, float loss, flo
     fflush(stdout);
 }
 
+#ifdef LOG
 /**
  * Logs the progress of the current epoch to the log file.
  */
@@ -294,3 +298,4 @@ void log_biases(NeuralNetwork *nn, int epoch) {
     // Close the biases log file
     fclose(biases_log_file);
 }
+#endif
