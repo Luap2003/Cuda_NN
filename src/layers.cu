@@ -73,20 +73,17 @@ void layer_init(Layer *layer, int m, int n_in, int n_out, ActivationType aktfunc
 }
 
 
-// Kernel to add bias
-__global__ void add_bias_kernel(float *Z, const float *b, int n_out, int m) {
+// Fused kernel: add bias and apply activation function
+__global__ void add_bias_and_activation_kernel(const float *Z, const float *b, float *A, int n_out, int m, ActivationType aktfunc) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n_out * m) {
+    int total_elements = n_out * m;
+    if (idx < total_elements) {
+        // Compute row index (assuming Z is in column-major order)
         int row = idx % n_out;
-        Z[idx] += b[row];
-    }
-}
-
-// Kernel for activation function
-__global__ void activation_forward_kernel(const float *Z, float *A, int size, ActivationType aktfunc) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < size) {
-        float z = Z[idx];
+        // Add bias
+        float z = Z[idx] + b[row];
+        
+        // Apply activation
         switch (aktfunc) {
             case ACTIVATION_RELU:
                 A[idx] = fmaxf(0.0f, z);
@@ -94,15 +91,14 @@ __global__ void activation_forward_kernel(const float *Z, float *A, int size, Ac
             case ACTIVATION_SIGMOID:
                 A[idx] = 1.0f / (1.0f + expf(-z));
                 break;
-            default:
-                A[idx] = z; // Linear activation
+            default:  // Linear activation or unsupported type defaults to linear
+                A[idx] = z;
                 break;
         }
     }
 }
 
 void layer_forward(Layer *layer, float *A_prev_d, cublasHandle_t handle) {
-
     float alpha = 1.0f;
     float beta = 0.0f;
 
@@ -126,19 +122,14 @@ void layer_forward(Layer *layer, float *A_prev_d, cublasHandle_t handle) {
     
     if (status != CUBLAS_STATUS_SUCCESS) {
         printf("cuBLAS error in cublasSgemm: %d\n", status);
-        // Handle the error or exit
         exit(EXIT_FAILURE);
     }
         
     int total_elements = layer->n_out * layer->m;
     int blocks = (total_elements + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 
-    add_bias_kernel<<<blocks, THREADS_PER_BLOCK>>>(layer->Z_d, layer->b_d, layer->n_out, layer->m);
-    cudaCheckError();
-    
-    blocks = (total_elements + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
-    activation_forward_kernel<<<blocks, THREADS_PER_BLOCK>>>(layer->Z_d, layer->A_d, total_elements, layer->aktfunc);
-    
+    // Launch the fused kernel instead of two separate launches.
+    add_bias_and_activation_kernel<<<blocks, THREADS_PER_BLOCK>>>(layer->Z_d, layer->b_d, layer->A_d, layer->n_out, layer->m, layer->aktfunc);
     cudaCheckError();
 }
 
