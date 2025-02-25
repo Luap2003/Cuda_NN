@@ -29,21 +29,42 @@ typedef struct {
 
 /**
  * @brief Initializes the neural network with given architecture and training parameters.
+ *
+ * @param nn Pointer to @ref NeuralNetwork struct.
+ * @param num_layers Number of layers.
+ * @param layer_sizes Pointer to array holding layer sizes.
+ * @param activations Pointer to array of @ref ActivationType enums.
+ * @param batch_size Size of batches.
+ * @param num_epochs Number of epochs.
+ * @param learning_rate Lerning rate.
+ * @param decay_rate Decay rate.
  */
 void neural_network_init(NeuralNetwork *nn, int num_layers, int *layer_sizes, ActivationType *activations, int batch_size, int num_epochs, float learning_rate, float decay_rate);
 
 /**
  * @brief Trains the neural network using the provided training data.
+ *
+ * @param nn Pointer to @ref NeuralNetwork struct.
+ * @param train_images Pointer to array of the training images.
+ * @param train_labels Pointer to array of training labels
+ * @param num_train_samples Number of training samples.
  */
 void neural_network_train(NeuralNetwork *nn, float *train_images, float *train_labels, int num_train_samples);
 
 /**
  * @brief Evaluates the neural network on the test data.
+ *
+ * @param nn Pointer to @ref NeuralNetwork struct.
+ * @param test_images Pointer to array of the test images.
+ * @param test_labels Pointer to array of test labels
+ * @param num_test_samples Number of test samples.
  */
 void neural_network_evaluate(NeuralNetwork *nn, float *test_images, float *test_labels, int num_test_samples);
 
 /**
  * @brief Frees the resources allocated for the neural network.
+ *
+ * @param nn Pointer to @ref NeuralNetwork struct.
  */
 void free_neural_network(NeuralNetwork *nn);
 
