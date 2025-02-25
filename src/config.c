@@ -6,6 +6,11 @@
 #include "../include/activations.h"
 #include "../include/config.h"
 
+/**
+ * @brief Removes spaces from string.
+ *
+ * @param s String to be stripped of spaces.
+ */
 void remove_spaces(char* s) {
   char* d = s;
   do {
@@ -15,6 +20,12 @@ void remove_spaces(char* s) {
   } while ((*s++ = *d++));
 }
 
+/**
+ * @brief Parse hidden layers.
+ *
+ * @param config Pointer to @ref Config struct.
+ * @param value Value of the hidden_layers key.
+ */
 int hidden_layers(Config *config, char *value){
   
       int count = 0;
@@ -52,6 +63,12 @@ int hidden_layers(Config *config, char *value){
       return 0;
 }
 
+/**
+ * @brief Parse hidden layers.
+ *
+ * @param config Pointer to @ref Config struct.
+ * @param value Value of the activation_functions key.
+ */
 int activation_functions(Config *config, char *value){
   
       int size = 1;

@@ -8,7 +8,9 @@
 extern "C" {
 #endif
 
-// Define the Config struct
+/**
+ * @brief Struct holds all configuration options for the neural network.
+ */
 typedef struct Config {
     int *hidden_layers;
     int input_layer;
@@ -23,10 +25,16 @@ typedef struct Config {
     float decay_rate;
 } Config;
 
-// Declare the functions you want to use in C and C++ files
-void remove_spaces(char* s);
-int hidden_layers(Config *config, char *value);
-int activation_functions(Config *config, char *value);
+// void remove_spaces(char* s);
+// int hidden_layers(Config *config, char *value);
+// int activation_functions(Config *config, char *value);
+ 
+/**
+ * @brief Parses config file and populates @ref Config struct.
+ *
+ * @param config_file Path to config file.
+ * @param config Pointer to @ref Config struct.
+ */
 int parser(char *config_file, Config *config);
 
 #ifdef __cplusplus
