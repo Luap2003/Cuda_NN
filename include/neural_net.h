@@ -23,6 +23,12 @@ typedef struct {
     float initial_learning_rate;
     float decay_rate;
 
+    float huber_delta;  // New: parameter for Huber loss
+
+    float *scale_y_d;
+    float *mean_y_d;
+    float *scale_X_d;
+    float *mean_X_d;
     // cuBLAS handle
     cublasHandle_t handle;
 } NeuralNetwork;
@@ -39,8 +45,9 @@ typedef struct {
  * @param learning_rate Lerning rate.
  * @param decay_rate Decay rate.
  */
-void neural_network_init(NeuralNetwork *nn, int num_layers, int *layer_sizes, ActivationType *activations, int batch_size, int num_epochs, float learning_rate, float decay_rate);
-
+void neural_network_init(NeuralNetwork *nn, int num_layers, int *layer_sizes, ActivationType *activations, int batch_size, int num_epochs, float learning_rate, float decay_rate, float huber_delta,
+    float *scale_y, float *mean_y, int scale_y_size,
+    float *scale_X, float *mean_X, int scale_X_size) ;
 /**
  * @brief Trains the neural network using the provided training data.
  *

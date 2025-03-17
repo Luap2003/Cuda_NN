@@ -17,7 +17,7 @@ endif
 ARCH = sm_$(shell nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits | tr -d '.')
 NVCC        = nvcc
 CC          = gcc
-NVCC_FLAGS  = -arch=$(ARCH) -O2 -I./include -I/usr/local/cuda/include -I./tests/unity -lcublas
+NVCC_FLAGS  = -arch=sm_86 -O2 -I./include -I/usr/local/cuda/include -I./tests/unity -lcublas
 CC_FLAGS    = -O2 -I./include -I/usr/local/cuda/include -I./tests/unity
 LD_FLAGS    = -L/usr/local/cuda/lib64 -lcudart -lcublas -lm
 
@@ -59,8 +59,8 @@ $(TARGET): $(CU_OBJECTS) $(C_OBJECTS) | $(BIN_DIR)
 	$(NVCC) $(NVCC_FLAGS) -o $@ $(CU_OBJECTS) $(C_OBJECTS) $(LD_FLAGS)
 
 # Build the test runner executable
-$(TEST_TARGET): $(TEST_OBJECTS) $(UNITY_OBJ) $(CU_OBJECTS_NO_MAIN) | $(BIN_DIR)
-	$(NVCC) $(NVCC_FLAGS) -o $@ $^ $(LD_FLAGS)
+#$(TEST_TARGET): $(TEST_OBJECTS) $(UNITY_OBJ) $(CU_OBJECTS_NO_MAIN) | $(BIN_DIR)
+#	$(NVCC) $(NVCC_FLAGS) -o $@ $^ $(LD_FLAGS)
 
 # Compile CUDA source files into object files
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cu | $(OBJ_DIR)

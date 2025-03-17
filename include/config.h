@@ -35,7 +35,7 @@ typedef struct Config {
  * @param config_file Path to config file.
  * @param config Pointer to @ref Config struct.
  */
-int parser(char *config_file, Config *config);
+int parser(const char *config_file, Config *config);
 
 #ifdef __cplusplus
 }

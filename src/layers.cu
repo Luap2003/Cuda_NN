@@ -206,15 +206,41 @@ __global__ void deriv_akt_kernel(const float *Z, float *dZ, int size, Activation
     }
 }
 
-void backward_output_layer(Layer *layer, float *Y, float *A_prev_d, cublasHandle_t handle) {
-    int dZ_size = layer->n_out * layer->m;
-    int grid_size = (dZ_size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+void backward_output_layer(Layer *layer, float *Y, float *A_prev_d, 
+    float *scale_y_d, float *mean_y_d,
+    float *scale_X_d, float *mean_X_d,
+    float delta, cublasHandle_t handle) {
+    int n_out = layer->n_out;
+    int m = layer->m;
+    float loss_value;
 
-    // Compute dZ = A - Y
-    compute_dZ<<<grid_size, THREADS_PER_BLOCK>>>(layer->dZ_d, layer->A_d, Y, dZ_size);
-    //cudaDeviceSynchronize();
+    // Use our custom loss function to compute both loss and gradients
+    compute_custom_loss(
+    layer->A_d,    // Predictions
+    Y,             // True values
+    scale_y_d,     // Scale factors for predictions
+    mean_y_d,      // Mean values for predictions
+    scale_X_d,     // Scale factors for targets
+    mean_X_d,      // Mean values for targets
+    m,             // Batch size
+    n_out,         // Output dimension
+    delta,         // Huber loss parameter
+    &loss_value,   // Output loss value
+    layer->dZ_d    // Output gradients
+    );
+    // Print dZ for debugging
+    float *dZ_h = (float*)malloc(n_out * m * sizeof(float));
+    cudaMemcpy(dZ_h, layer->dZ_d, n_out * m * sizeof(float), cudaMemcpyDeviceToHost);
     cudaCheckError();
-    // Compute dW and db
+
+    //printf("dZ (first 10 values):\n");
+    //for (int i = 0; i < 10 && i < n_out * m; ++i) {
+    //    printf("%f ", dZ_h[i]);
+    //}
+    //printf("\n");
+
+    free(dZ_h);
+    // Continue with computing dW and db as before
     compute_gradients(layer, A_prev_d, handle);
 }
 

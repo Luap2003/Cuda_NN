@@ -122,7 +122,7 @@ int activation_functions(Config *config, char *value){
       return 0;
 }
 
-int parser(char *config_file, Config *config){
+int parser(const char *config_file, Config *config){
 
   
   char line[256];

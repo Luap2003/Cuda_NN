@@ -70,8 +70,11 @@ void layer_forward(Layer *layer, float *A_prev_d, cublasHandle_t handle);
  * @param A_prev_d Activations from the previous layer.
  * @param handle CublasHandle.
  */
-void backward_output_layer(Layer *layer, float *Y, float *A_prev_d, cublasHandle_t handle);
-
+ void backward_output_layer(Layer *layer, float *Y, float *A_prev_d, 
+    float *scale_y_d, float *mean_y_d,
+    float *scale_X_d, float *mean_X_d,
+    float delta, cublasHandle_t handle);
+    
 /**
  * @brief Performs backword propagation on hidden layers.
  *
