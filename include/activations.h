@@ -6,6 +6,7 @@
 typedef enum {
     ACTIVATION_LINEAR,
     ACTIVATION_SIGMOID,
+    ACTIVATION_SOFTMAX,
     ACTIVATION_RELU
     // Add more activations as needed
 } ActivationType;
@@ -22,4 +23,6 @@ __global__ void relu_derivative_kernel(float *d_output_grad, float *output, floa
 __device__ float linear(float x);
 __global__ void linear_kernel(float *input, float *output, int n);
 __global__ void linear_derivative_kernel(float *d_output_grad, float *output, float *delta, int size);
+
+
 #endif // ACTIVATIONS_H

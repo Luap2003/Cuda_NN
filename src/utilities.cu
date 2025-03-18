@@ -115,7 +115,7 @@ void generate_log_filename(char *log_filename, size_t size, int batch_size, int 
     strftime(time_buffer, sizeof(time_buffer), "%Y%m%d_%H%M%S", time_info);
 
     // Create the log filename with batch size, epochs, and timestamp
-    snprintf(log_filename, size, "logs/temp/training_log_cuda_%s_bs%d_ep%d.csv", time_buffer, batch_size, num_epochs);
+    snprintf(log_filename, size, "logs/256_128_64/training_log_cuda_%s_bs%d_ep%d.csv", time_buffer, batch_size, num_epochs);
 }
 
 void generate_weights_biases_log_filenames(char *weights_log, size_t w_size, char *biases_log, size_t b_size, int batch_size, int num_epochs) {
@@ -131,8 +131,8 @@ void generate_weights_biases_log_filenames(char *weights_log, size_t w_size, cha
     strftime(time_buffer, sizeof(time_buffer), "%Y%m%d_%H%M%S", time_info);
 
     // Create the weights and biases log filenames with batch size, epochs, and timestamp
-    snprintf(weights_log, w_size, "logs/temp/weights_log_cuda_%s_bs%d_ep%d.csv", time_buffer, batch_size, num_epochs);
-    snprintf(biases_log, b_size, "logs/temp/biases_log_cuda_%s_bs%d_ep%d.csv", time_buffer, batch_size, num_epochs);
+    snprintf(weights_log, w_size, "logs/256_128_64/weights_log_cuda_%s_bs%d_ep%d.csv", time_buffer, batch_size, num_epochs);
+    snprintf(biases_log, b_size, "logs/256_128_64/biases_log_cuda_%s_bs%d_ep%d.csv", time_buffer, batch_size, num_epochs);
 }
 
 void log_weights(NeuralNetwork *nn, int epoch) {

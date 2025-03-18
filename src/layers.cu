@@ -73,27 +73,71 @@ void layer_init(Layer *layer, int m, int n_in, int n_out, ActivationType aktfunc
 }
 
 
-// Fused kernel: add bias and apply activation function
 __global__ void add_bias_and_activation_kernel(const float *Z, const float *b, float *A, int n_out, int m, ActivationType aktfunc) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int total_elements = n_out * m;
     if (idx < total_elements) {
-        // Compute row index (assuming Z is in column-major order)
+        // Compute row and column for column-major layout
         int row = idx % n_out;
+        
         // Add bias
-        float z = Z[idx] + b[row];
+        float z_value = Z[idx] + b[row];
         
         // Apply activation
         switch (aktfunc) {
             case ACTIVATION_RELU:
-                A[idx] = fmaxf(0.0f, z);
+                A[idx] = fmaxf(0.0f, z_value);
                 break;
             case ACTIVATION_SIGMOID:
-                A[idx] = 1.0f / (1.0f + expf(-z));
+                A[idx] = 1.0f / (1.0f + expf(-z_value));
                 break;
-            default:  // Linear activation or unsupported type defaults to linear
-                A[idx] = z;
+            case ACTIVATION_SOFTMAX:
+                // For softmax, just store biased value
+                // We'll compute softmax in a cooperative way in a second phase
+                A[idx] = z_value;
                 break;
+            default:  // Linear activation
+                A[idx] = z_value;
+                break;
+        }
+    }
+}
+
+// Cooperative softmax implementation (to be called after add_bias)
+__global__ void softmax_transform_kernel(float *A, int n_out, int m) {
+    // Each block handles one column (one example)
+    int col = blockIdx.x;
+    int tid = threadIdx.x;
+    
+    if (col < m) {
+        __shared__ float max_val;
+        __shared__ float sum;
+        
+        // First thread finds the maximum value in this column
+        if (tid == 0) {
+            max_val = -INFINITY;
+            for (int row = 0; row < n_out; row++) {
+                max_val = fmaxf(max_val, A[row + col * n_out]);
+            }
+        }
+        __syncthreads();
+        
+        // Compute exp(a - max) and prepare for sum
+        if (tid == 0) {
+            sum = 0.0f;
+            for (int row = 0; row < n_out; row++) {
+                float exp_val = expf(A[row + col * n_out] - max_val);
+                A[row + col * n_out] = exp_val;
+                sum += exp_val;
+            }
+        }
+        __syncthreads();
+        
+        // Normalize by the sum
+        if (tid == 0) {
+            for (int row = 0; row < n_out; row++) {
+                A[row + col * n_out] /= sum;
+            }
         }
     }
 }
@@ -128,9 +172,17 @@ void layer_forward(Layer *layer, float *A_prev_d, cublasHandle_t handle) {
     int total_elements = layer->n_out * layer->m;
     int blocks = (total_elements + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 
-    // Launch the fused kernel instead of two separate launches.
-    add_bias_and_activation_kernel<<<blocks, THREADS_PER_BLOCK>>>(layer->Z_d, layer->b_d, layer->A_d, layer->n_out, layer->m, layer->aktfunc);
+    add_bias_and_activation_kernel<<<blocks, THREADS_PER_BLOCK>>>(
+        layer->Z_d, layer->b_d, layer->A_d, layer->n_out, layer->m, layer->aktfunc
+    );
     cudaCheckError();
+    
+    // If softmax, apply the second phase
+    if (layer->aktfunc == ACTIVATION_SOFTMAX) {
+        // Launch one block per example, with just one thread per block
+        softmax_transform_kernel<<<layer->m, 1>>>(layer->A_d, layer->n_out, layer->m);
+        cudaCheckError();
+    }
 }
 
 // Kernel to compute dZ = A - Y

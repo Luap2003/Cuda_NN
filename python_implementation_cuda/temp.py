@@ -1,65 +1,51 @@
-import numpy as np
+import tensorflow as tf
+from tensorflow import keras
+import os
+import time
+tf.config.optimizer.set_jit(True)
 
-def generate_layer_test_data(batch_size=3, input_size=4, output_size=3, output_2_size = 2):
-    """
-    Generate test data for neural network layer testing in C.
-    
-    Args:
-        batch_size (int): Number of samples in the batch
-        input_size (int): Size of the input layer
-        output_size (int): Size of the output layer
-    
-    Returns:
-        dict: Dictionary containing test data arrays for C code
-    """
-    # Seed for reproducibility
-    np.random.seed(42)
-    m = batch_size
-    W_k_plus_1 = np.random.rand(output_2_size,output_size)
-    dZ_k_plus_1 = np.random.rand(output_2_size,m)
-    Z = np.random.rand(output_size,m)
-    # Compute expected gradients manually
+os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
+os.environ['TF_GPU_THREAD_COUNT'] = '1'
+os.environ['TF_XLA_FLAGS'] = '--tf_xla_auto_jit=2 --tf_xla_cpu_global_jit'
+start_time = time.time()
 
-    def deriv_akt_func(Z):
-        return Z > 0
+physical_devices = tf.config.list_physical_devices('GPU')
+if physical_devices:
+    for device in physical_devices:
+        tf.config.experimental.set_memory_growth(device, True)
+    print(f"Found {len(physical_devices)} GPUs")
+else:
+    print("No GPU found, using CPU")
+(x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
 
-    dZ = W_k_plus_1.T @ dZ_k_plus_1 * deriv_akt_func(Z)
-    
-    # Prepare output in column-major format (for C)
-    def to_c_array_string(arr):
-        return ', '.join([f'{x:.5f}f' for x in arr.flatten('F')])
-    
-    return {
-        'W_k_plus_1': to_c_array_string(W_k_plus_1),
-        'dZ_k_plus_1': to_c_array_string(dZ_k_plus_1),
-        'Z': to_c_array_string(Z),
-        'dZ': to_c_array_string(dZ),
-        'batch_size': batch_size,
-        'input_size': input_size,
-        'output_size': output_size,
-        'output_size_2': output_2_size
-    }
+x_train = x_train.reshape(-1, 28, 28, 1).astype("float32") / 255.0
+x_test = x_test.reshape(-1, 28, 28, 1).astype("float32") / 255.0
+print(x_train.shape)
+# Convert labels to one-hot vectors
+num_classes = 10
+y_train = keras.utils.to_categorical(y_train, num_classes)
+y_test = keras.utils.to_categorical(y_test, num_classes)
 
-def generate_c_test_code(test_data):
-    """
-    Generate C test function code with the computed arrays.
-    
-    Args:
-        test_data (dict): Dictionary containing test data
-    
-    Returns:
-        str: C test function code
-    """
-    print(test_data)
-    
 
-# Generate test data
-test_data = generate_layer_test_data()
+batch_size = 16
+model = keras.Sequential([
+    keras.layers.Flatten(input_shape=(28, 28, 1)),  # Flatten from (28,28,1) to (784,)
+    keras.layers.Dense(256, activation="relu"),
+    keras.layers.Dense(128, activation="relu"),
+    keras.layers.Dense(num_classes, activation="softmax")
+])
 
-# Print C test code
-print(generate_c_test_code(test_data))
+model.compile(
+    loss="categorical_crossentropy",
+    optimizer="SGD",
+    metrics=["accuracy"],
+    jit_compile=True  # Enable XLA compilation
+)
+start_time = time.time()
+model.fit(x_train,y_train, batch_size=batch_size,verbose=0,epochs=100)
 
-# Optional: Print the generated arrays for verification
-for key, value in test_data.items():
-    if key.startswith('h_'):
-        print(f"{key}: {value}")
+# 6. Evaluate on the test set
+test_loss, test_accuracy = model.evaluate(x_test, y_test)
+print(f"Test accuracy: {test_accuracy:.4f}")
+# Print total execution time
+print(f"Total execution time: {time.time() - start_time:.2f} seconds")
