@@ -5,3 +5,4 @@ docs
 logs*
 *.ipynb
 report*
+nn_benchmark_results.md
