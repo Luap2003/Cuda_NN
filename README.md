@@ -40,7 +40,7 @@ To benchmark against TF for multiple Parameters:
 
 To analyze the program further use:
 ```
-nsys profile -t cuda,osrt --stats=true -o my_report ./bin/neural_ne
+nsys profile -t cuda,osrt --stats=true -o my_report ./bin/neural_net
 ```
 
 # License
