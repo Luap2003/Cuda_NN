@@ -31,8 +31,20 @@ To generate the documentation run
 ```sh
 $ make docs
 ```
+
+# Benchmarking
+To benchmark against TF for multiple Parameters:
+```
+./benchmark_cuda.sh
+```
+
+To analyze the program further use:
+```
+nsys profile -t cuda,osrt --stats=true -o my_report ./bin/neural_ne
+```
+
 # License
-This work is licensed under the MIT license.
+This work is licensed under the MIT licSense.
 # Contribution guidelines
 For now there will be no contributions welcomed, because the project is to
 be graded.
